@@ -205,3 +205,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# 打包和发布相关的文件
+# --------------------
+/dist/
+/build/
+/*.egg-info/
+/htmlcov/
