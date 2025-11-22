@@ -1,6 +1,7 @@
 # async_client.py
 import aiohttp
 import asyncio
+from aiohttp.client_exceptions import ClientResponseError
 from typing import Dict, Any, Optional
 
 class AsyncThordataClient:
@@ -13,18 +14,20 @@ class AsyncThordataClient:
         response = await client.get(...)
     """
     
-    def __init__(self, auth_user: str, auth_pass: str, proxy_host: str = "gate.thordata.com", port: int = 22225):
+    # 🌟 修复点 A：将参数统一为 api_key
+    def __init__(self, api_key: str, proxy_host: str = "gate.thordata.com", port: int = 22225):
         """
         初始化异步客户端。
         
-        :param auth_user: 账户的用户名
-        :param auth_pass: 账户的密码
+        :param api_key: 你的 Thordata API 密钥 (用于代理认证的用户名)。
         :param proxy_host: Thordata 的代理网关地址
         :param port: 代理端口
         """
-        # aiohttp 代理认证信息需要单独传递
-        self.proxy_auth = aiohttp.BasicAuth(auth_user, auth_pass)
+        # Thordata 代理认证使用 API Key 作为用户名，密码留空
+        # 🌟 修复点 B：使用 api_key 作为 login，password 留空
+        self.proxy_auth = aiohttp.BasicAuth(login=api_key, password='')
         self.proxy_url = f"http://{proxy_host}:{port}"
+        self.api_key = api_key # 保存 api_key
         
         # Session 用于复用 TCP 连接，提升性能
         self._session: Optional[aiohttp.ClientSession] = None
@@ -63,7 +66,7 @@ class AsyncThordataClient:
         print(f"DEBUG: Async Requesting {url} via {self.proxy_url}")
         
         try:
-            # 注意：await 是异步编程的关键，用于等待网络 I/O 完成
+            # await 是异步编程的关键，用于等待网络 I/O 完成
             response = await self._session.get(
                 url, 
                 proxy=self.proxy_url, 
