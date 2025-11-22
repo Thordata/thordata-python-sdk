@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='thordata-sdk',  # pip install thordata-sdk
-    version='0.1.0',     # 初始版本号
+    version='0.1.1',     # 初始版本号
     packages=find_packages(include=['thordata_sdk', 'thordata_sdk.*']), # 确保包含 thordata_sdk
     install_requires=[
         'requests',      # 依赖 requests 库处理 HTTP 请求
