@@ -1,86 +1,88 @@
-# async_client.py
 import aiohttp
 import asyncio
 from aiohttp.client_exceptions import ClientResponseError
-from typing import Dict, Any, Optional
+from typing import Optional, Any
+import logging
+
+logger = logging.getLogger(__name__)
 
 class AsyncThordataClient:
     """
-    Thordata 代理异步客户端。
-    使用 aiohttp 库，用于高并发、低延迟的 AI 和数据采集任务。
+    Thordata Asynchronous Client.
     
-    使用示例：
-    async with AsyncThordataClient(...) as client:
-        response = await client.get(...)
+    Built on `aiohttp`, designed for high-concurrency, low-latency AI data collection tasks.
+    Must be used within an `async` context manager to ensure proper resource management.
+
+    Usage:
+        async with AsyncThordataClient(api_key="...") as client:
+            response = await client.get("https://example.com")
     """
     
-    # 🌟 修复点 A：将参数统一为 api_key
     def __init__(self, api_key: str, proxy_host: str = "gate.thordata.com", port: int = 22225):
         """
-        初始化异步客户端。
-        
-        :param api_key: 你的 Thordata API 密钥 (用于代理认证的用户名)。
-        :param proxy_host: Thordata 的代理网关地址
-        :param port: 代理端口
+        Initialize the asynchronous client.
+
+        Args:
+            api_key (str): Your Thordata API Key (used as the proxy username).
+            proxy_host (str, optional): Thordata proxy gateway address. Defaults to "gate.thordata.com".
+            port (int, optional): Proxy port. Defaults to 22225.
         """
-        # Thordata 代理认证使用 API Key 作为用户名，密码留空
-        # 🌟 修复点 B：使用 api_key 作为 login，password 留空
+        # Configure Basic Authentication for aiohttp (User: API Key, Pass: Empty)
         self.proxy_auth = aiohttp.BasicAuth(login=api_key, password='')
         self.proxy_url = f"http://{proxy_host}:{port}"
-        self.api_key = api_key # 保存 api_key
+        self.api_key = api_key
         
-        # Session 用于复用 TCP 连接，提升性能
+        # Session will be initialized in __aenter__
         self._session: Optional[aiohttp.ClientSession] = None
         
     async def __aenter__(self):
-        """支持 async with 语法，进入时创建 Session"""
+        """Enter the async context manager and initialize the session."""
         if self._session is None or self._session.closed:
-            # 创建一个 Session，可以设置默认的连接参数
-            # 使用 trust_env=True 可以利用系统证书，更安全
+            # trust_env=True enables reading system proxy settings if needed
             self._session = aiohttp.ClientSession(trust_env=True)
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        """支持 async with 语法，退出时关闭 Session，释放资源"""
+        """Exit the async context manager and close the session."""
         await self.close()
         
     async def close(self):
-        """
-        显式关闭客户端会话 (Session)。
-        """
+        """Explicitly close the client session to release resources."""
         if self._session and not self._session.closed:
             await self._session.close()
             self._session = None
 
     async def get(self, url: str, **kwargs) -> aiohttp.ClientResponse:
         """
-        通过 Thordata 代理发送异步 GET 请求。
+        Send an asynchronous GET request through the Thordata proxy.
 
-        :param url: 目标 URL
-        :param kwargs: 传递给 session.get() 的额外参数（如 headers, cookies, data 等）
-        :return: aiohttp.ClientResponse 对象
+        Args:
+            url (str): The target URL.
+            **kwargs: Additional arguments passed to `session.get` (headers, cookies, etc.).
+
+        Returns:
+            aiohttp.ClientResponse: The response object.
+
+        Raises:
+            RuntimeError: If the client is used outside of a context manager.
+            aiohttp.ClientError: If the request fails.
         """
         if self._session is None:
-             raise RuntimeError("Client session not initialized. Please use 'async with AsyncThordataClient(...)' or call '__aenter__' manually.")
+             raise RuntimeError("Client session not initialized. Please use 'async with AsyncThordataClient(...)' context manager.")
              
-        print(f"DEBUG: Async Requesting {url} via {self.proxy_url}")
+        logger.debug(f"Async Requesting {url} via {self.proxy_url}")
         
         try:
-            # await 是异步编程的关键，用于等待网络 I/O 完成
             response = await self._session.get(
                 url, 
                 proxy=self.proxy_url, 
                 proxy_auth=self.proxy_auth,
-                # 设置全局超时，避免长时间挂起
-                timeout=aiohttp.ClientTimeout(total=15),
+                timeout=aiohttp.ClientTimeout(total=30),
                 **kwargs
             )
-            # raise_for_status() 会在遇到 4xx/5xx 错误时抛出异常
             response.raise_for_status()
-            
             return response
 
         except aiohttp.ClientError as e:
-            # 捕获所有 aiohttp 相关的错误，如连接错误、DNS 查找失败等
-            print(f"ERROR: Async Request failed for {url}. Details: {e}")
+            logger.error(f"Async Request failed for {url}. Details: {e}")
             raise
