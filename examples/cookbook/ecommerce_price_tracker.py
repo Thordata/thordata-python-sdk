@@ -1,47 +1,49 @@
 # examples/cookbook/ecommerce_price_tracker.py
-"""
-COOKBOOK: Cross-border E-commerce Price Tracker
------------------------------------------------
-Scenario: An e-commerce seller wants to monitor competitor prices 
-for a specific product on Google Shopping globally.
-"""
-
 import os
-from thordata_sdk import ThordataClient
+from dotenv import load_dotenv
+# 🌟 导入新的枚举
+from thordata_sdk import ThordataClient, Engine, GoogleSearchType
 
-# ⚠️ 配置你的 Key
-SCRAPER_TOKEN = os.getenv("THORDATA_SCRAPER_TOKEN", "YOUR_TOKEN_HERE")
-PUBLIC_TOKEN = os.getenv("THORDATA_PUBLIC_TOKEN", "YOUR_TOKEN_HERE")
-PUBLIC_KEY = os.getenv("THORDATA_PUBLIC_KEY", "YOUR_KEY_HERE")
+load_dotenv()
+
+SCRAPER_TOKEN = os.getenv("THORDATA_SCRAPER_TOKEN")
+PUBLIC_TOKEN = os.getenv("THORDATA_PUBLIC_TOKEN")
+PUBLIC_KEY = os.getenv("THORDATA_PUBLIC_KEY")
 
 def track_prices():
-    if SCRAPER_TOKEN == "YOUR_TOKEN_HERE":
-        print("Please set your tokens first.")
+    if not SCRAPER_TOKEN:
+        print("Please check your .env file.")
         return
 
     client = ThordataClient(SCRAPER_TOKEN, PUBLIC_TOKEN, PUBLIC_KEY)
     
     product_name = "iPhone 15 Pro Max 256GB"
-    target_markets = ["us", "uk", "jp"] # 美国, 英国, 日本
+    target_markets = ["us", "uk", "jp"]
     
     print(f"🌍 Starting Global Price Tracking for: {product_name}")
     
     for market in target_markets:
         print(f"\n🔍 Searching in market: {market.upper()}...")
         
-        # 使用 SERP API 指定国家 (gl=country code)
         try:
+            # 🌟 使用新 SDK 的参数透传功能
+            # 我们直接把 gl=market 传进去，SDK 会自动处理
             results = client.serp_search(
                 query=product_name, 
-                engine="google", 
-                gl=market, # Google Location parameter
+                engine=Engine.GOOGLE, 
+                type=GoogleSearchType.SHOPPING, # 指定搜索类型为购物
+                gl=market, 
                 num=3
             )
             
-            if "organic" in results:
+            # 注意：Shopping 结果的结构可能和 organic 不一样，这里做个通用打印
+            if "shopping_results" in results:
+                top_hit = results["shopping_results"][0]
+                print(f"   💰 Price: {top_hit.get('price')} ({top_hit.get('source')})")
+                print(f"      Link: {top_hit.get('link')}")
+            elif "organic" in results:
                 top_hit = results["organic"][0]
                 print(f"   👉 Top Result: {top_hit.get('title')}")
-                print(f"      Link: {top_hit.get('link')}")
             else:
                 print("   ⚠️ No results found.")
                 

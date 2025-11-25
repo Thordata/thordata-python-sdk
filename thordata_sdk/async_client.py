@@ -4,6 +4,10 @@ import json
 import base64
 from typing import Optional, Dict, Any, Union
 
+# 复用我们刚刚写好的逻辑和枚举
+from .enums import Engine
+from .parameters import normalize_serp_params
+
 logger = logging.getLogger(__name__)
 
 
@@ -52,7 +56,7 @@ class AsyncThordataClient:
             await self._session.close()
             self._session = None
 
-    # --- Proxy ---
+    # --- Proxy (Unchanged) ---
     async def get(self, url: str, **kwargs) -> aiohttp.ClientResponse:
         if self._session is None:
             raise RuntimeError("Client session not initialized.")
@@ -67,32 +71,32 @@ class AsyncThordataClient:
             logger.error(f"Async Request failed: {e}")
             raise
 
-    # --- SERP ---
+    # --- SERP (Optimized) ---
     async def serp_search(
-        self, query: str, engine: str = "google", num: int = 10, **kwargs
+        self, 
+        query: str, 
+        engine: Union[Engine, str] = Engine.GOOGLE, 
+        num: int = 10, 
+        **kwargs
     ) -> Dict[str, Any]:
+        """
+        Execute a real-time SERP search (Async).
+        """
         if self._session is None:
             raise RuntimeError("Client session not initialized.")
 
-        payload = {
-            "q": query, "num": str(num), "json": "1",
-            "engine": engine.lower(), **kwargs
-        }
-        if engine.lower() == 'yandex':
-            payload['text'] = payload.pop('q')
-            if 'url' not in payload:
-                payload['url'] = "yandex.com"
-        elif 'url' not in payload:
-            if engine == 'google':
-                payload['url'] = "google.com"
-            elif engine == 'bing':
-                payload['url'] = "bing.com"
+        # 1. 转换枚举
+        engine_str = engine.value if isinstance(engine, Engine) else engine.lower()
+
+        # 2. 调用 parameters.py 复用逻辑 (Don't Repeat Yourself!)
+        payload = normalize_serp_params(engine_str, query, num=num, **kwargs)
 
         headers = {
             "Authorization": f"Bearer {self.scraper_token}",
             "Content-Type": "application/x-www-form-urlencoded"
         }
 
+        # 3. 发送请求
         async with self._session.post(
             self.SERP_API_URL, data=payload, headers=headers
         ) as response:
@@ -105,7 +109,7 @@ class AsyncThordataClient:
                     pass
             return data
 
-    # --- Universal ---
+    # --- Universal (Unchanged) ---
     async def universal_scrape(
         self,
         url: str,
@@ -155,6 +159,10 @@ class AsyncThordataClient:
                 if not png_str:
                     raise Exception("API returned empty PNG data")
 
+                # 🛠️ FIX: 移除 Data URI Scheme 前缀
+                if "," in png_str:
+                    png_str = png_str.split(",", 1)[1]
+
                 png_str = png_str.replace("\n", "").replace("\r", "")
                 missing_padding = len(png_str) % 4
                 if missing_padding:
@@ -163,15 +171,18 @@ class AsyncThordataClient:
 
             return str(resp_json)
 
-    # --- Web Scraper ---
+    # --- Web Scraper (Optimized) ---
     async def create_scraper_task(
         self,
         file_name: str,
         spider_id: str,
+        spider_name: str,
         individual_params: Dict[str, Any],
-        spider_name: str = "youtube.com",
         universal_params: Dict[str, Any] = None
     ) -> str:
+        """
+        Create an Asynchronous Web Scraper Task.
+        """
         if self._session is None:
             raise RuntimeError("Client session not initialized.")
 
@@ -180,6 +191,7 @@ class AsyncThordataClient:
             "Content-Type": "application/x-www-form-urlencoded"
         }
 
+        # 简化 Payload 构建，移除不必要的检查
         payload = {
             "file_name": file_name,
             "spider_id": spider_id,
@@ -199,6 +211,7 @@ class AsyncThordataClient:
                 raise Exception(f"Creation failed: {data}")
             return data["data"]["task_id"]
 
+    # --- Status & Result (Unchanged) ---
     async def get_task_status(self, task_id: str) -> str:
         headers = {
             "token": self.public_token,

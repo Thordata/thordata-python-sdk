@@ -4,51 +4,44 @@ import os
 import sys
 import time
 import json
+from dotenv import load_dotenv # pip install python-dotenv
 
-# Ensure thordata_sdk is in path
+# 路径处理
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+# 🌟 新增：导入 Engine 枚举
 from thordata_sdk.client import ThordataClient 
+from thordata_sdk.enums import Engine
 
 def main():
-    print("=== Thordata SDK Demo ===")
+    load_dotenv() # 自动读取 .env
+    print("=== Thordata SDK Demo (v0.2.4+) ===")
 
-    # -----------------------------------------------------
-    # ⚠️ USER CONFIGURATION ⚠️
-    # Please replace these placeholders with your actual credentials from the Thordata Dashboard.
-    # -----------------------------------------------------
-    
-    # 1. Scraper Token (From the bottom of Dashboard - for Creating Tasks & SERP)
-    SCRAPER_TOKEN = "YOUR_SCRAPER_TOKEN_HERE" 
-    
-    # 2. Public API Token (From the top of Dashboard - for Checking Status)
-    PUBLIC_TOKEN = "YOUR_LONG_PUBLIC_TOKEN_HERE"
-    
-    # 3. Public Key (From the top of Dashboard - for Signature)
-    PUBLIC_KEY = "YOUR_PUBLIC_KEY_HERE"
+    # 从环境变量获取，不再硬编码
+    SCRAPER_TOKEN = os.getenv("THORDATA_SCRAPER_TOKEN")
+    PUBLIC_TOKEN = os.getenv("THORDATA_PUBLIC_TOKEN") 
+    PUBLIC_KEY = os.getenv("THORDATA_PUBLIC_KEY")
 
-    if SCRAPER_TOKEN == "YOUR_SCRAPER_TOKEN_HERE":
-        print("❌ Error: Please edit 'examples/demo_features.py' and insert your real API tokens.")
-        print("   (See README.md for instructions on where to find them)")
+    if not SCRAPER_TOKEN:
+        print("❌ Error: Missing Token. Please set THORDATA_SCRAPER_TOKEN in .env file.")
         return
 
-    # Initialize Client
     client = ThordataClient(SCRAPER_TOKEN, PUBLIC_TOKEN, PUBLIC_KEY)
 
     # ==========================================
-    # 1. Test SERP API
+    # 1. Test SERP API (Using Enum!)
     # ==========================================
     print("\n--- 1. SERP Search (Google) ---")
     try:
         query = "Thordata technology"
         print(f"Searching for: '{query}'...")
         
-        results = client.serp_search(query, engine="google")
+        # 🌟 最佳实践：使用 Engine.GOOGLE 而不是字符串 "google"
+        results = client.serp_search(query, engine=Engine.GOOGLE)
         
-        # Print Status
         metadata = results.get("search_metadata", {})
         print(f"✅ Status: {metadata.get('status', 'Unknown')}")
         
-        # Print Organic Results (这就是你刚才缺少的打印部分)
         if "organic" in results:
             print(f"   Found {len(results['organic'])} organic results. Top 2:")
             for item in results["organic"][:2]:
@@ -65,13 +58,11 @@ def main():
     # ==========================================
     print("\n--- 2. Web Scraper (YouTube) ---")
     try:
-        # Create Task
         print("Creating task...")
-        # Note: Using empty parameters as per Dashboard default to ensure success
         task_id = client.create_scraper_task(
             file_name="demo_youtube_data",
             spider_id="youtube_video-post_by-url",
-            spider_name="youtube.com",
+            spider_name="youtube.com", # 这里依然可以用字符串，或者如果你定义了 ScraperTarget 枚举也可以用
             individual_params={
                 "url": "https://www.youtube.com/@stephcurry/videos",
                 "order_by": "",
@@ -80,26 +71,21 @@ def main():
         )
         print(f"✅ Task Created! ID: {task_id}")
 
-        # Poll Status
         print("Waiting for completion...")
-        for i in range(30):
+        # 简单轮询逻辑
+        for i in range(10): 
             status = client.get_task_status(task_id)
             print(f"   Check {i+1}: {status}")
-            
             if status in ["Ready", "Success"]:
                 break
-            elif status == "Failed":
-                print("❌ Task failed on server side.")
+            if status == "Failed":
+                print("❌ Task failed.")
                 return
-            time.sleep(5)
+            time.sleep(3)
 
-        # Get Result
         if status in ["Ready", "Success"]:
-            # Wait a bit for CDN generation
-            time.sleep(5)
             url = client.get_task_result(task_id)
             print(f"\n✅ Download URL: {url}")
-            print("   (Note: If URL returns 404, please wait a moment or check if results are empty)")
             
     except Exception as e:
         print(f"❌ Scraper Failed: {e}")

@@ -2,7 +2,10 @@ import requests
 import logging
 import json
 import base64
-from typing import Dict, Any, Union
+from typing import Dict, Any, Union, Optional
+
+from .enums import Engine
+from .parameters import normalize_serp_params
 
 # Configure a library-specific logger
 logger = logging.getLogger(__name__)
@@ -72,37 +75,33 @@ class ThordataClient:
         return self.session.get(url, **kwargs)
 
     def serp_search(
-        self, query: str, engine: str = "google", num: int = 10, **kwargs
+        self, 
+        query: str, 
+        engine: Union[Engine, str] = Engine.GOOGLE, # 既可以是枚举，也可以是字符串
+        num: int = 10, 
+        **kwargs # 这里接收所有额外参数 (比如 type="maps")
     ) -> Dict[str, Any]:
         """
         Execute a real-time SERP search.
+        
+        Args:
+            query: Keywords
+            engine: 'google', 'bing', 'yandex' etc.
+            num: Number of results (default 10)
+            **kwargs: Extra parameters (e.g., type="shopping", location="London")
         """
-        payload = {
-            "q": query,
-            "num": str(num),
-            "json": "1",
-            "engine": engine.lower(),
-            **kwargs
-        }
+        # 兼容处理：如果用户传的是枚举对象，取它的值；如果是字符串，转小写
+        engine_str = engine.value if isinstance(engine, Engine) else engine.lower()
 
-        if engine.lower() == 'yandex':
-            payload['text'] = payload.pop('q')
-            if 'url' not in payload:
-                payload['url'] = "yandex.com"
-        elif 'url' not in payload:
-            if engine == 'google':
-                payload['url'] = "google.com"
-            elif engine == 'bing':
-                payload['url'] = "bing.com"
-            elif engine == 'duckduckgo':
-                payload['url'] = "duckduckgo.com"
+        # 调用 parameters.py 里的逻辑
+        payload = normalize_serp_params(engine_str, query, num=num, **kwargs)
 
         headers = {
             "Authorization": f"Bearer {self.scraper_token}",
             "Content-Type": "application/x-www-form-urlencoded"
         }
 
-        logger.info(f"SERP Search: {engine} - {query}")
+        logger.info(f"SERP Search: {engine_str} - {query}")
         try:
             response = self.session.post(
                 self.SERP_API_URL,
@@ -111,17 +110,16 @@ class ThordataClient:
                 timeout=60
             )
             response.raise_for_status()
+            
             data = response.json()
-
             if isinstance(data, str):
-                try:
-                    data = json.loads(data)
-                except json.JSONDecodeError:
-                    pass
+                try: data = json.loads(data)
+                except: pass
             return data
         except Exception as e:
             logger.error(f"SERP Request Failed: {e}")
             raise
+
 
     def universal_scrape(
         self,
@@ -177,12 +175,17 @@ class ThordataClient:
             if "html" in resp_json:
                 return resp_json["html"]
 
-            # Extract PNG (Base64 decoding with padding fix)
+            # Extract PNG
             if "png" in resp_json:
                 png_str = resp_json["png"]
                 if not png_str:
                     raise Exception("API returned empty PNG data")
 
+                # 🛠️ FIX: 移除 Data URI Scheme 前缀 (data:image/png;base64,)
+                if "," in png_str:
+                    png_str = png_str.split(",", 1)[1]
+
+                # Base64 解码 (处理 padding)
                 png_str = png_str.replace("\n", "").replace("\r", "")
                 missing_padding = len(png_str) % 4
                 if missing_padding:
@@ -199,19 +202,22 @@ class ThordataClient:
     def create_scraper_task(
         self,
         file_name: str,
-        spider_id: str,
-        individual_params: Dict[str, Any],
-        spider_name: str = "youtube.com",
+        spider_id: str,     # 必须传，用户从仪表板获取
+        spider_name: str,   # 必须传，例如 "youtube.com"
+        individual_params: Dict[str, Any], # 用户把具体的参数打包在这个字典里传进来
         universal_params: Dict[str, Any] = None
     ) -> str:
         """
-        Create an Asynchronous Web Scraper Task.
+        Create a generic Web Scraper Task.
+        
+        Note: Check the Thordata Dashboard to get the correct 'spider_id' and 'spider_name'.
         """
         headers = {
             "Authorization": f"Bearer {self.scraper_token}",
             "Content-Type": "application/x-www-form-urlencoded"
         }
 
+        # 直接打包发送，不替用户做太多复杂的校验，保证兼容性
         payload = {
             "spider_name": spider_name,
             "spider_id": spider_id,
@@ -222,7 +228,7 @@ class ThordataClient:
         if universal_params:
             payload["spider_universal"] = json.dumps(universal_params)
 
-        logger.info(f"Creating Scraper Task: {spider_id}")
+        logger.info(f"Creating Scraper Task: {spider_name} (ID: {spider_id})")
         try:
             response = self.session.post(
                 self.SCRAPER_BUILDER_URL,
