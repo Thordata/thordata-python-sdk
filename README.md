@@ -1,76 +1,86 @@
-# thordata-python-sdk: The Official Python Client
+# Thordata Python SDK
 
 <h4 align="center">
-  A high-performance, asynchronous-ready Python library for integrating with the Thordata Proxy Network.
-  Perfect for AI Agents and large-scale data collection.
+  The Official Python Client for the Thordata Proxy Network & Web Scraper API.
+  <br>
+  <i>High-performance, async-ready, designed for AI Agents and large-scale data collection.</i>
 </h4>
+
+<p align="center">
+  <a href="https://pypi.org/project/thordata-sdk/"><img src="https://img.shields.io/pypi/v/thordata-sdk?color=blue" alt="PyPI version"></a>
+  <a href="https://github.com/Thordata/thordata-python-sdk/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License"></a>
+  <a href="https://python.org"><img src="https://img.shields.io/badge/python-3.8+-blue" alt="Python Versions"></a>
+</p>
 
 ---
 
-## 🛠 Installation (安装)
+## 🛠 Installation
 
-We recommend installing with `pip`:
+Install via pip:
 
 ```bash
 pip install thordata-sdk
 ```
 
-**Note**: Before official release to PyPI, you can install locally using `pip install .` for testing and development.
+## ⚡ Quick Start
 
----
+### 1. Proxy Usage (Simple GET Request)
 
-## ⚡ Quick Start (快速开始)
-
-Use Thordata proxy to make requests in three simple steps. Make sure you have the `requests` library installed in your Python environment.
+**Python**
 
 ```python
 from thordata_sdk import ThordataClient
-import requests
 
-# Replace with your Thordata authentication credentials
-THORDATA_USER = "YOUR_USERNAME" 
-THORDATA_PASS = "YOUR_PASSWORD" 
-TARGET_URL = "http://httpbin.org/ip" # A public service for testing IP
+# Initialize with your credentials from the Thordata Dashboard
+client = ThordataClient(
+    scraper_token="YOUR_SCRAPER_TOKEN", # From "Scraping Tool Token"
+    public_token="YOUR_PUBLIC_TOKEN",   # From "Public API"
+    public_key="YOUR_PUBLIC_KEY"        # From "Public API"
+)
 
-# 1. Initialize the client
-client = ThordataClient(auth_user=THORDATA_USER, auth_pass=THORDATA_PASS)
-
-# 2. Send request
-try:
-    # Send request through proxy with 15 second timeout
-    response = client.get(TARGET_URL, timeout=15) 
-
-    # 3. Print results
-    if response.status_code == 200:
-        data = response.json()
-        print("Success! Request made via Thordata Proxy.")
-        # httpbin.org/ip returns the request source IP to verify proxy is working
-        print(f"Origin IP: {data.get('origin')}") 
-    else:
-        print(f"Request failed with status code: {response.status_code}")
-
-except requests.RequestException as e:
-    print(f"An error occurred during request: {e}")
+# Send a request through the proxy
+response = client.get("http://httpbin.org/ip")
+print(response.json())
 ```
 
----
+### 2. Real-time SERP Search
 
-## ⚙️ Development Status (开发状态)
+**Python**
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Proxy Client (HTTP/S) | ✅ Done (MVP) | ThordataClient class for synchronous requests implemented |
-| Setup & Packaging | ✅ Done | Project structure and setup.py configured |
-| Async Support | 🚧 Planned | Future integration with aiohttp for high concurrency |
+```python
+results = client.serp_search("Thordata technology", engine="google")
+print(f"Results found: {len(results.get('organic', []))}")
+```
 
----
+### 3. Asynchronous Usage (High Concurrency)
 
-## 📄 License (授权)
+**Python**
+
+```python
+import asyncio
+from thordata_sdk import AsyncThordataClient
+
+async def main():
+    async with AsyncThordataClient(scraper_token="...", public_token="...", public_key="...") as client:
+        response = await client.get("http://httpbin.org/ip")
+        print(await response.json())
+
+asyncio.run(main())
+```
+
+## ⚙️ Features Status
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Proxy Network | ✅ Stable | Synchronous & Asynchronous support via aiohttp. |
+| SERP API | ✅ Stable | Real-time Google/Bing/Yandex search results. |
+| Web Scraper | ✅ Stable | Async task management for scraping complex sites (e.g., YouTube). |
+| Authentication | ✅ Secure | Dual-token system for enhanced security. |
+
+## 📄 License
 
 This project is licensed under the Apache License 2.0.
 
----
-
 ## 📞 Support
 
-Email us at [support@thordata.com](mailto:support@thordata.com) for technical assistance.
+For technical assistance, please contact support@thordata.com or verify your tokens in the Thordata Dashboard.

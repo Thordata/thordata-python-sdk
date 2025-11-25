@@ -1,27 +1,57 @@
-# ✍️ 贡献指南 (CONTRIBUTING.md)
+# ✍️ Contributing to Thordata Python SDK
 
-欢迎来到 **Thordata Python SDK** 的贡献者社区！我们相信开源的力量，你的每一次提交都将帮助 AI 开发者更便捷地获取数据。
+Welcome to the **Thordata Python SDK** community! We believe in the power of open source, and your contributions help AI developers access data more efficiently.
 
-请在提交代码之前阅读以下指南。
+Please read this guide before submitting any code.
 
 ---
 
-## 🤝 如何贡献？
+## 🤝 How can I contribute?
 
-我们欢迎各种形式的贡献，包括但不限于：
+We welcome all forms of contributions, including but not limited to:
 
-1.  **提交 Bug 报告** (Bug Reports)：发现并报告代码中的错误。
-2.  **功能请求** (Feature Requests)：提出新的功能或改进建议。
-3.  **代码贡献** (Code Submissions)：提交新的代码、文档或修复。
+1.  **Bug Reports**: Report errors you encounter.
+2.  **Feature Requests**: Suggest new features or improvements.
+3.  **Code Submissions**: Submit PRs for bug fixes, new features, or documentation updates.
 
-## 🚀 代码贡献流程
+## 🚀 Contribution Workflow
 
-### 1. 克隆项目与创建分支
+### 1. Clone and Branch
 
-在开始编码前，请从 `main` 分支拉取最新的代码，并创建一个新的功能分支。
+Before coding, please pull the latest code from the `main` branch and create a new feature branch.
 
 ```bash
 git checkout main
 git pull origin main
-git checkout -b feature/your-feature-name 
-# 示例：git checkout -b feature/add-serp-api
+git checkout -b feature/your-feature-name
+# Example: git checkout -b feature/add-yandex-support
+```
+
+### 2. Install Dependencies
+
+We recommend using a virtual environment:
+
+**Bash**
+
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows use: venv\Scripts\activate
+pip install -r requirements.txt
+pip install -e .          # Install the package in editable mode
+```
+
+### 3. Run Tests
+
+Ensure all tests pass before submitting:
+
+**Bash**
+
+```bash
+pytest
+```
+
+### 4. Submit a Pull Request (PR)
+
+Push your changes to your fork and submit a Pull Request to our main branch. Please provide a clear description of your changes.
+
+Thank you for building with Thordata! 🚀

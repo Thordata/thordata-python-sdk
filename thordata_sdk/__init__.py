@@ -1,6 +1,6 @@
-# 暴露 ThordataClient 类
+# Expose main clients
 from .client import ThordataClient
-from .async_client import AsyncThordataClient # 新增这一行！
+from .async_client import AsyncThordataClient
 
-# 定义版本号
-__version__ = "0.1.2"
+# Version of the thordata-sdk package
+__version__ = "0.2.0"
