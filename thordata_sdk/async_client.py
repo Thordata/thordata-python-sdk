@@ -1,7 +1,8 @@
 import aiohttp
 import logging
 import json
-from typing import Optional, Dict, Any
+import base64
+from typing import Optional, Dict, Any, Union
 
 logger = logging.getLogger(__name__)
 
@@ -9,11 +10,6 @@ logger = logging.getLogger(__name__)
 class AsyncThordataClient:
     """
     Thordata Asynchronous Client (built on aiohttp).
-    Designed for high-concurrency and low-latency data collection tasks.
-
-    Usage:
-        async with AsyncThordataClient(...) as client:
-            await client.get("http://example.com")
     """
 
     def __init__(
@@ -24,22 +20,19 @@ class AsyncThordataClient:
         proxy_host: str = "gate.thordata.com",
         proxy_port: int = 22225
     ):
-        """
-        Initialize the asynchronous client.
-        """
         self.scraper_token = scraper_token
         self.public_token = public_token
         self.public_key = public_key
 
-        # Proxy Authentication
         self.proxy_auth = aiohttp.BasicAuth(login=scraper_token, password='')
         self.proxy_url = f"http://{proxy_host}:{proxy_port}"
 
-        # API Endpoints
         self.base_url = "https://scraperapi.thordata.com"
+        self.universal_url = "https://universalapi.thordata.com"
         self.api_url = "https://api.thordata.com/api/web-scraper-api"
 
         self.SERP_API_URL = f"{self.base_url}/request"
+        self.UNIVERSAL_API_URL = f"{self.universal_url}/request"
         self.SCRAPER_BUILDER_URL = f"{self.base_url}/builder"
         self.SCRAPER_STATUS_URL = f"{self.api_url}/tasks-status"
         self.SCRAPER_DOWNLOAD_URL = f"{self.api_url}/tasks-download"
@@ -55,21 +48,14 @@ class AsyncThordataClient:
         await self.close()
 
     async def close(self):
-        """Close the underlying aiohttp session."""
         if self._session and not self._session.closed:
             await self._session.close()
             self._session = None
 
-    # --- Proxy Usage ---
-
+    # --- Proxy ---
     async def get(self, url: str, **kwargs) -> aiohttp.ClientResponse:
-        """
-        Send an asynchronous GET request through the Thordata Proxy.
-        """
         if self._session is None:
             raise RuntimeError("Client session not initialized.")
-
-        logger.debug(f"Async Proxy Request: {url}")
         try:
             return await self._session.get(
                 url,
@@ -81,21 +67,16 @@ class AsyncThordataClient:
             logger.error(f"Async Request failed: {e}")
             raise
 
-    # --- SERP API ---
-
+    # --- SERP ---
     async def serp_search(
         self, query: str, engine: str = "google", num: int = 10, **kwargs
     ) -> Dict[str, Any]:
-        """Async SERP search."""
         if self._session is None:
             raise RuntimeError("Client session not initialized.")
 
         payload = {
-            "q": query,
-            "num": str(num),
-            "json": "1",
-            "engine": engine.lower(),
-            **kwargs
+            "q": query, "num": str(num), "json": "1",
+            "engine": engine.lower(), **kwargs
         }
         if engine.lower() == 'yandex':
             payload['text'] = payload.pop('q')
@@ -117,7 +98,6 @@ class AsyncThordataClient:
         ) as response:
             response.raise_for_status()
             data = await response.json()
-            # Handle double-encoding
             if isinstance(data, str):
                 try:
                     data = json.loads(data)
@@ -125,8 +105,65 @@ class AsyncThordataClient:
                     pass
             return data
 
-    # --- Web Scraper API ---
+    # --- Universal ---
+    async def universal_scrape(
+        self,
+        url: str,
+        js_render: bool = False,
+        output_format: str = "HTML",
+        country: str = None,
+        block_resources: bool = False
+    ) -> Union[str, bytes]:
+        if self._session is None:
+            raise RuntimeError("Client session not initialized.")
 
+        headers = {
+            "Authorization": f"Bearer {self.scraper_token}",
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
+
+        payload = {
+            "url": url,
+            "js_render": "True" if js_render else "False",
+            "type": output_format.lower(),
+            "block_resources": "True" if block_resources else "False"
+        }
+        if country:
+            payload["country"] = country
+
+        async with self._session.post(
+            self.UNIVERSAL_API_URL, data=payload, headers=headers
+        ) as response:
+            response.raise_for_status()
+
+            try:
+                resp_json = await response.json()
+            except Exception:
+                if output_format.upper() == "PNG":
+                    return await response.read()
+                return await response.text()
+
+            if isinstance(resp_json, dict) and resp_json.get("code") \
+                    and resp_json.get("code") != 200:
+                raise Exception(f"Universal API Error: {resp_json}")
+
+            if "html" in resp_json:
+                return resp_json["html"]
+
+            if "png" in resp_json:
+                png_str = resp_json["png"]
+                if not png_str:
+                    raise Exception("API returned empty PNG data")
+
+                png_str = png_str.replace("\n", "").replace("\r", "")
+                missing_padding = len(png_str) % 4
+                if missing_padding:
+                    png_str += '=' * (4 - missing_padding)
+                return base64.b64decode(png_str)
+
+            return str(resp_json)
+
+    # --- Web Scraper ---
     async def create_scraper_task(
         self,
         file_name: str,
@@ -135,7 +172,6 @@ class AsyncThordataClient:
         spider_name: str = "youtube.com",
         universal_params: Dict[str, Any] = None
     ) -> str:
-        """Create an async scraping task."""
         if self._session is None:
             raise RuntimeError("Client session not initialized.")
 
@@ -164,7 +200,6 @@ class AsyncThordataClient:
             return data["data"]["task_id"]
 
     async def get_task_status(self, task_id: str) -> str:
-        """Check task status."""
         headers = {
             "token": self.public_token,
             "key": self.public_key,
@@ -183,7 +218,6 @@ class AsyncThordataClient:
             return "Unknown"
 
     async def get_task_result(self, task_id: str, file_type: str = "json") -> str:
-        """Get download link."""
         headers = {
             "token": self.public_token,
             "key": self.public_key,

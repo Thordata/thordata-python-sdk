@@ -1,7 +1,8 @@
 import requests
 import logging
 import json
-from typing import Dict, Any
+import base64
+from typing import Dict, Any, Union
 
 # Configure a library-specific logger
 logger = logging.getLogger(__name__)
@@ -14,7 +15,8 @@ class ThordataClient:
     Handles authentication for:
     1. Proxy Network (HTTP/HTTPS)
     2. SERP API (Real-time Search)
-    3. Web Scraper API (Async Task Management)
+    3. Universal Scraping API (Single Page)
+    4. Web Scraper API (Async Task Management)
     """
 
     def __init__(
@@ -39,16 +41,18 @@ class ThordataClient:
         self.public_token = public_token
         self.public_key = public_key
 
-        # Proxy Configuration (User: Scraper Token, Pass: Empty)
+        # Proxy Configuration
         self.proxy_url = (
             f"http://{self.scraper_token}:@{proxy_host}:{proxy_port}"
         )
 
         # API Endpoints
         self.base_url = "https://scraperapi.thordata.com"
+        self.universal_url = "https://universalapi.thordata.com"
         self.api_url = "https://api.thordata.com/api/web-scraper-api"
 
         self.SERP_API_URL = f"{self.base_url}/request"
+        self.UNIVERSAL_API_URL = f"{self.universal_url}/request"
         self.SCRAPER_BUILDER_URL = f"{self.base_url}/builder"
         self.SCRAPER_STATUS_URL = f"{self.api_url}/tasks-status"
         self.SCRAPER_DOWNLOAD_URL = f"{self.api_url}/tasks-download"
@@ -62,13 +66,6 @@ class ThordataClient:
     def get(self, url: str, **kwargs) -> requests.Response:
         """
         Send a GET request through the Thordata Proxy Network.
-
-        Args:
-            url (str): The target URL.
-            **kwargs: Additional arguments passed to requests.get().
-
-        Returns:
-            requests.Response: The HTTP response.
         """
         logger.debug(f"Proxy Request: {url}")
         kwargs.setdefault("timeout", 30)
@@ -88,7 +85,6 @@ class ThordataClient:
             **kwargs
         }
 
-        # Engine-specific parameter adjustments
         if engine.lower() == 'yandex':
             payload['text'] = payload.pop('q')
             if 'url' not in payload:
@@ -117,7 +113,6 @@ class ThordataClient:
             response.raise_for_status()
             data = response.json()
 
-            # Handle potential double-encoded JSON strings
             if isinstance(data, str):
                 try:
                     data = json.loads(data)
@@ -126,6 +121,79 @@ class ThordataClient:
             return data
         except Exception as e:
             logger.error(f"SERP Request Failed: {e}")
+            raise
+
+    def universal_scrape(
+        self,
+        url: str,
+        js_render: bool = False,
+        output_format: str = "HTML",
+        country: str = None,
+        block_resources: bool = False
+    ) -> Union[str, bytes]:
+        """
+        Unlock target pages via the Universal Scraping API.
+        """
+        headers = {
+            "Authorization": f"Bearer {self.scraper_token}",
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
+
+        payload = {
+            "url": url,
+            "js_render": "True" if js_render else "False",
+            "type": output_format.lower(),
+            "block_resources": "True" if block_resources else "False"
+        }
+        if country:
+            payload["country"] = country
+
+        logger.info(f"Universal Scrape: {url}")
+
+        try:
+            response = self.session.post(
+                self.UNIVERSAL_API_URL,
+                data=payload,
+                headers=headers,
+                timeout=60
+            )
+            response.raise_for_status()
+
+            # Parse JSON wrapper
+            try:
+                resp_json = response.json()
+            except json.JSONDecodeError:
+                # Fallback for raw response
+                if output_format.upper() == "PNG":
+                    return response.content
+                return response.text
+
+            # Check API errors
+            if isinstance(resp_json, dict) and resp_json.get("code") \
+                    and resp_json.get("code") != 200:
+                raise Exception(f"Universal API Error: {resp_json}")
+
+            # Extract HTML
+            if "html" in resp_json:
+                return resp_json["html"]
+
+            # Extract PNG (Base64 decoding with padding fix)
+            if "png" in resp_json:
+                png_str = resp_json["png"]
+                if not png_str:
+                    raise Exception("API returned empty PNG data")
+
+                png_str = png_str.replace("\n", "").replace("\r", "")
+                missing_padding = len(png_str) % 4
+                if missing_padding:
+                    png_str += '=' * (4 - missing_padding)
+
+                return base64.b64decode(png_str)
+
+            return str(resp_json)
+
+        except Exception as e:
+            logger.error(f"Universal Scrape Failed: {e}")
             raise
 
     def create_scraper_task(
@@ -174,7 +242,6 @@ class ThordataClient:
     def get_task_status(self, task_id: str) -> str:
         """
         Check the status of a task.
-        Returns: 'Running', 'Ready', 'Failed', or 'Unknown'.
         """
         headers = {
             "token": self.public_token,
