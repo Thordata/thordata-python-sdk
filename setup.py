@@ -1,8 +1,8 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='thordata-sdk',
-    version='0.2.0',  # Bump version due to breaking auth changes
+    name='thordata_sdk',
+    version='0.2.2',  # Bump version due to breaking auth changes
     packages=find_packages(include=['thordata_sdk', 'thordata_sdk.*']),
     install_requires=[
         'requests>=2.25.0',  # Standard synchronous HTTP
