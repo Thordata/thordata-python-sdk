@@ -7,7 +7,7 @@ from typing import Dict, Any, Union, Optional
 from .enums import Engine
 from .parameters import normalize_serp_params
 
-# Configure a library-specific logger
+# Configure a library-specific logger to avoid interfering with user's logging
 logger = logging.getLogger(__name__)
 
 
@@ -15,11 +15,11 @@ class ThordataClient:
     """
     The official synchronous Python client for Thordata.
 
-    Handles authentication for:
-    1. Proxy Network (HTTP/HTTPS)
-    2. SERP API (Real-time Search)
-    3. Universal Scraping API (Single Page)
-    4. Web Scraper API (Async Task Management)
+    This client handles authentication and communication with:
+    1. Proxy Network (Residential/Datacenter via HTTP/HTTPS)
+    2. SERP API (Real-time Search Engine Results)
+    3. Universal Scraping API (Single Page Rendering & Extraction)
+    4. Web Scraper API (Async Task Management for large scale jobs)
     """
 
     def __init__(
@@ -34,11 +34,11 @@ class ThordataClient:
         Initialize the Thordata Client.
 
         Args:
-            scraper_token (str): Token from Dashboard bottom.
-            public_token (str): Token from Public API section.
-            public_key (str): Key from Public API section.
-            proxy_host (str): Proxy gateway host.
-            proxy_port (int): Proxy gateway port.
+            scraper_token (str): The secret token found at the bottom of the Dashboard.
+            public_token (str): The token from the Public API section.
+            public_key (str): The key from the Public API section.
+            proxy_host (str): The proxy gateway host (default: gate.thordata.com).
+            proxy_port (int): The proxy gateway port (default: 22225).
         """
         self.scraper_token = scraper_token
         self.public_token = public_token
@@ -49,7 +49,7 @@ class ThordataClient:
             f"http://{self.scraper_token}:@{proxy_host}:{proxy_port}"
         )
 
-        # API Endpoints
+        # API Endpoints Definition
         self.base_url = "https://scraperapi.thordata.com"
         self.universal_url = "https://universalapi.thordata.com"
         self.api_url = "https://api.thordata.com/api/web-scraper-api"
@@ -60,6 +60,7 @@ class ThordataClient:
         self.SCRAPER_STATUS_URL = f"{self.api_url}/tasks-status"
         self.SCRAPER_DOWNLOAD_URL = f"{self.api_url}/tasks-download"
 
+        # Initialize Session with Proxy settings
         self.session = requests.Session()
         self.session.proxies = {
             "http": self.proxy_url,
@@ -68,7 +69,14 @@ class ThordataClient:
 
     def get(self, url: str, **kwargs) -> requests.Response:
         """
-        Send a GET request through the Thordata Proxy Network.
+        Send a standard GET request through the Thordata Residential Proxy Network.
+
+        Args:
+            url (str): The target URL.
+            **kwargs: Arguments to pass to requests.get().
+
+        Returns:
+            requests.Response: The response object.
         """
         logger.debug(f"Proxy Request: {url}")
         kwargs.setdefault("timeout", 30)
@@ -77,23 +85,26 @@ class ThordataClient:
     def serp_search(
         self, 
         query: str, 
-        engine: Union[Engine, str] = Engine.GOOGLE, # 既可以是枚举，也可以是字符串
+        engine: Union[Engine, str] = Engine.GOOGLE,
         num: int = 10, 
-        **kwargs # 这里接收所有额外参数 (比如 type="maps")
+        **kwargs
     ) -> Dict[str, Any]:
         """
-        Execute a real-time SERP search.
+        Execute a real-time SERP (Search Engine Results Page) search.
         
         Args:
-            query: Keywords
-            engine: 'google', 'bing', 'yandex' etc.
-            num: Number of results (default 10)
-            **kwargs: Extra parameters (e.g., type="shopping", location="London")
+            query (str): The search keywords.
+            engine (Union[Engine, str]): The search engine (e.g., 'google', 'bing').
+            num (int): Number of results to retrieve (default 10).
+            **kwargs: Additional parameters (e.g., type="shopping", location="London").
+
+        Returns:
+            Dict[str, Any]: The parsed JSON result from the search engine.
         """
-        # 兼容处理：如果用户传的是枚举对象，取它的值；如果是字符串，转小写
+        # Handle Enum or String input for engine
         engine_str = engine.value if isinstance(engine, Engine) else engine.lower()
 
-        # 调用 parameters.py 里的逻辑
+        # Normalize parameters via internal helper
         payload = normalize_serp_params(engine_str, query, num=num, **kwargs)
 
         headers = {
@@ -112,25 +123,38 @@ class ThordataClient:
             response.raise_for_status()
             
             data = response.json()
+            # Handle cases where the API returns a stringified JSON
             if isinstance(data, str):
-                try: data = json.loads(data)
-                except: pass
+                try: 
+                    data = json.loads(data)
+                except json.JSONDecodeError: 
+                    pass
             return data
         except Exception as e:
             logger.error(f"SERP Request Failed: {e}")
             raise
-
 
     def universal_scrape(
         self,
         url: str,
         js_render: bool = False,
         output_format: str = "HTML",
-        country: str = None,
+        country: Optional[str] = None,
         block_resources: bool = False
     ) -> Union[str, bytes]:
         """
         Unlock target pages via the Universal Scraping API.
+        Bypasses Cloudflare, CAPTCHAs, and antibot systems automatically.
+
+        Args:
+            url (str): Target URL.
+            js_render (bool): Whether to render JavaScript (Headless Browser).
+            output_format (str): "HTML" or "PNG" (screenshot).
+            country (Optional[str]): Geo-targeting country code (e.g., 'us').
+            block_resources (bool): Block images/css to speed up loading.
+
+        Returns:
+            Union[str, bytes]: HTML string or PNG bytes.
         """
         headers = {
             "Authorization": f"Bearer {self.scraper_token}",
@@ -146,7 +170,7 @@ class ThordataClient:
         if country:
             payload["country"] = country
 
-        logger.info(f"Universal Scrape: {url}")
+        logger.info(f"Universal Scrape: {url} (Format: {output_format})")
 
         try:
             response = self.session.post(
@@ -157,35 +181,35 @@ class ThordataClient:
             )
             response.raise_for_status()
 
-            # Parse JSON wrapper
+            # Attempt to parse JSON wrapper
             try:
                 resp_json = response.json()
             except json.JSONDecodeError:
-                # Fallback for raw response
+                # Fallback: if the API returns raw content directly
                 if output_format.upper() == "PNG":
                     return response.content
                 return response.text
 
-            # Check API errors
+            # Check for API-level errors inside the JSON
             if isinstance(resp_json, dict) and resp_json.get("code") \
                     and resp_json.get("code") != 200:
                 raise Exception(f"Universal API Error: {resp_json}")
 
-            # Extract HTML
+            # Case 1: Return HTML
             if "html" in resp_json:
                 return resp_json["html"]
 
-            # Extract PNG
+            # Case 2: Return PNG Image
             if "png" in resp_json:
                 png_str = resp_json["png"]
                 if not png_str:
                     raise Exception("API returned empty PNG data")
 
-                # 🛠️ FIX: 移除 Data URI Scheme 前缀 (data:image/png;base64,)
+                # Clean Data URI Scheme if present (e.g., data:image/png;base64,...)
                 if "," in png_str:
                     png_str = png_str.split(",", 1)[1]
 
-                # Base64 解码 (处理 padding)
+                # Fix Base64 Padding
                 png_str = png_str.replace("\n", "").replace("\r", "")
                 missing_padding = len(png_str) % 4
                 if missing_padding:
@@ -193,6 +217,7 @@ class ThordataClient:
 
                 return base64.b64decode(png_str)
 
+            # Fallback
             return str(resp_json)
 
         except Exception as e:
@@ -202,22 +227,33 @@ class ThordataClient:
     def create_scraper_task(
         self,
         file_name: str,
-        spider_id: str,     # 必须传，用户从仪表板获取
-        spider_name: str,   # 必须传，例如 "youtube.com"
-        individual_params: Dict[str, Any], # 用户把具体的参数打包在这个字典里传进来
-        universal_params: Dict[str, Any] = None
+        spider_id: str,
+        spider_name: str,
+        individual_params: Dict[str, Any],
+        universal_params: Optional[Dict[str, Any]] = None
     ) -> str:
         """
-        Create a generic Web Scraper Task.
+        Create a generic Web Scraper Task (Async).
         
-        Note: Check the Thordata Dashboard to get the correct 'spider_id' and 'spider_name'.
+        IMPORTANT: You must retrieve the correct 'spider_id' and 'spider_name' 
+        from the Thordata Dashboard before calling this method.
+
+        Args:
+            file_name (str): Name for the output file.
+            spider_id (str): The ID of the spider (from Dashboard).
+            spider_name (str): The name of the spider (e.g., "youtube.com").
+            individual_params (Dict): Parameters specific to the spider.
+            universal_params (Optional[Dict]): Global settings for the scraper.
+
+        Returns:
+            str: The created task_id.
         """
         headers = {
             "Authorization": f"Bearer {self.scraper_token}",
             "Content-Type": "application/x-www-form-urlencoded"
         }
 
-        # 直接打包发送，不替用户做太多复杂的校验，保证兼容性
+        # Payload construction
         payload = {
             "spider_name": spider_name,
             "spider_id": spider_id,
@@ -247,7 +283,13 @@ class ThordataClient:
 
     def get_task_status(self, task_id: str) -> str:
         """
-        Check the status of a task.
+        Check the status of an asynchronous scraping task.
+
+        Args:
+            task_id (str): The ID returned by create_scraper_task.
+
+        Returns:
+            str: The status string (e.g., "finished", "running", "error").
         """
         headers = {
             "token": self.public_token,
@@ -277,6 +319,13 @@ class ThordataClient:
     def get_task_result(self, task_id: str, file_type: str = "json") -> str:
         """
         Retrieve the download URL for a completed task.
+
+        Args:
+            task_id (str): The task ID.
+            file_type (str): Format required (default "json").
+
+        Returns:
+            str: The URL to download the result file.
         """
         headers = {
             "token": self.public_token,
@@ -285,7 +334,7 @@ class ThordataClient:
         }
         payload = {"tasks_id": task_id, "type": file_type}
 
-        logger.info(f"Getting result URL: {task_id}")
+        logger.info(f"Getting result URL for Task: {task_id}")
         try:
             response = self.session.post(
                 self.SCRAPER_DOWNLOAD_URL,

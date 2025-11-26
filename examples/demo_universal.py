@@ -1,52 +1,48 @@
+# Goal: Demonstrate Universal Scraping API (HTML & Screenshots).
+
 import os
-import sys
 from dotenv import load_dotenv
+from thordata import ThordataClient 
 
-# Ensure thordata_sdk is in path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from thordata_sdk.client import ThordataClient 
+load_dotenv()
 
-def main():
-    load_dotenv()
-    print("=== Thordata Universal API Demo ===")
+SCRAPER_TOKEN = os.getenv("THORDATA_SCRAPER_TOKEN")
+PUBLIC_TOKEN = os.getenv("THORDATA_PUBLIC_TOKEN") 
+PUBLIC_KEY = os.getenv("THORDATA_PUBLIC_KEY")
 
-    # Load Tokens
-    SCRAPER_TOKEN = os.getenv("THORDATA_SCRAPER_TOKEN")
-    PUBLIC_TOKEN = os.getenv("THORDATA_PUBLIC_TOKEN") 
-    PUBLIC_KEY = os.getenv("THORDATA_PUBLIC_KEY")
+if not SCRAPER_TOKEN:
+    print("❌ Error: Please configure your .env file.")
+    exit(1)
 
-    if not SCRAPER_TOKEN:
-        print("❌ Error: Please configure your .env file.")
-        return
+client = ThordataClient(SCRAPER_TOKEN, PUBLIC_TOKEN, PUBLIC_KEY)
 
-    client = ThordataClient(SCRAPER_TOKEN, PUBLIC_TOKEN, PUBLIC_KEY)
-
-    # 1. Test HTML Scraping
+def scrape_html():
     target_url = "http://httpbin.org/ip"
-    print(f"\n[1] Scraping HTML from: {target_url}...")
+    print(f"\n📄 [1] Scraping HTML from: {target_url}...")
     
     try:
+        # js_render=False is faster for simple sites
         html = client.universal_scrape(url=target_url, js_render=False)
         print("✅ HTML Scrape Success!")
-        print(f"   Content Preview: {html[:100]}...")
+        print(f"   Content Preview: {str(html)[:100]}...")
     except Exception as e:
         print(f"❌ HTML Scrape Failed: {e}")
 
-    # 2. Test Screenshot
-    # 使用 example.com 因为它加载快且稳定，适合演示
-    target_url_img = "https://www.example.com"
-    print(f"\n[2] Taking Screenshot of: {target_url_img}...")
+def take_screenshot():
+    # Using example.com as it is stable for demos
+    target_url = "https://www.example.com"
+    filename = "screenshot_result.png"
+    print(f"\n📸 [2] Taking Screenshot of: {target_url}...")
     
     try:
-        # SDK 现在会自动处理 Base64 解码和前缀清洗
+        # The SDK automatically handles Base64 decoding and cleaning
         image_bytes = client.universal_scrape(
-            url=target_url_img,
+            url=target_url,
             output_format="PNG",
             js_render=True,
             block_resources=False
         )
         
-        filename = "screenshot_result.png"
         with open(filename, "wb") as f:
             f.write(image_bytes)
             
@@ -58,4 +54,6 @@ def main():
         print(f"❌ Screenshot Failed: {e}")
 
 if __name__ == "__main__":
-    main()
+    print("=== Thordata Universal API Demo ===")
+    scrape_html()
+    take_screenshot()

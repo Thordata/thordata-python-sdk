@@ -1,7 +1,7 @@
 import pytest
 import aiohttp
 from aioresponses import aioresponses
-from thordata_sdk import AsyncThordataClient
+from thordata import AsyncThordataClient
 
 # Mark all tests in this module as async
 pytestmark = pytest.mark.asyncio

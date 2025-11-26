@@ -1,57 +1,67 @@
-# ✍️ Contributing to Thordata Python SDK
+# Contributing to Thordata Python SDK
 
-Welcome to the **Thordata Python SDK** community! We believe in the power of open source, and your contributions help AI developers access data more efficiently.
-
-Please read this guide before submitting any code.
+Thank you for your interest in contributing to the **Thordata Python SDK**.
+Your help makes it easier for AI developers and data teams to access high-quality web data.
 
 ---
 
-## 🤝 How can I contribute?
+## How can I contribute?
 
-We welcome all forms of contributions, including but not limited to:
+- Bug reports
+- Feature requests
+- Documentation improvements
+- Pull Requests (bug fixes, new features, examples)
 
-1.  **Bug Reports**: Report errors you encounter.
-2.  **Feature Requests**: Suggest new features or improvements.
-3.  **Code Submissions**: Submit PRs for bug fixes, new features, or documentation updates.
+---
 
-## 🚀 Contribution Workflow
+## Development Workflow
 
 ### 1. Clone and Branch
 
-Before coding, please pull the latest code from the `main` branch and create a new feature branch.
-
 ```bash
+git clone https://github.com/Thordata/thordata-python-sdk.git
+cd thordata-python-sdk
+
 git checkout main
 git pull origin main
 git checkout -b feature/your-feature-name
 # Example: git checkout -b feature/add-yandex-support
 ```
 
-### 2. Install Dependencies
+### 2. Set Up Environment
 
 We recommend using a virtual environment:
 
-**Bash**
-
 ```bash
 python -m venv venv
-source venv/bin/activate  # On Windows use: venv\Scripts\activate
-pip install -r requirements.txt
-pip install -e .          # Install the package in editable mode
+# On Linux / macOS:
+source venv/bin/activate
+# On Windows:
+venv\Scripts\activate
+```
+
+Install runtime and development dependencies:
+
+```bash
+pip install -e .
+pip install -r requirements.txt  # pytest, requests-mock, aioresponses, etc.
 ```
 
 ### 3. Run Tests
 
-Ensure all tests pass before submitting:
-
-**Bash**
-
 ```bash
-pytest
+python -m pytest
 ```
 
-### 4. Submit a Pull Request (PR)
+All tests should pass before submitting a PR.
 
-Push your changes to your fork and submit a Pull Request to our main branch. Please provide a clear description of your changes.
+### 4. Submit a Pull Request
 
-Thank you for building with Thordata! 🚀
+Push your branch and open a Pull Request against main.
+Please include:
+
+- A clear description of the change
+- Any relevant issue numbers
+- Screenshots or logs if applicable
+
+Thank you for building with Thordata.

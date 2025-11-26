@@ -1,18 +1,24 @@
-# examples/quick_test.py
-# Goal: Demonstrate how to use ThordataClient for proxy requests (Synchronous)
+# Goal: Demonstrate how to use ThordataClient for basic proxy requests.
 
 import os
-from thordata_sdk import ThordataClient
+import logging
+from dotenv import load_dotenv
+# Note the import: it is 'thordata', not 'thordata_sdk'
+from thordata import ThordataClient
+
+# Load environment variables from .env file
+load_dotenv()
 
 # --- Configuration ---
-# ⚠️ WARNING: Use Environment Variables for security in production!
-# Replace placeholders below with your actual credentials from the Dashboard.
-SCRAPER_TOKEN = os.getenv("THORDATA_SCRAPER_TOKEN", "fb6b478700dbbdf3651f314dde1e673a") 
-# For simple proxy usage, public tokens are not strictly required, but good to initialize correctly.
-PUBLIC_TOKEN = os.getenv("THORDATA_PUBLIC_TOKEN", "placeholder_token")
-PUBLIC_KEY = os.getenv("THORDATA_PUBLIC_KEY", "placeholder_key")
+SCRAPER_TOKEN = os.getenv("THORDATA_SCRAPER_TOKEN")
+PUBLIC_TOKEN = os.getenv("THORDATA_PUBLIC_TOKEN")
+PUBLIC_KEY = os.getenv("THORDATA_PUBLIC_KEY")
 
-TARGET_URL = "http://httpbin.org/ip" 
+# Ensure tokens are present
+if not SCRAPER_TOKEN:
+    raise ValueError("Please set THORDATA_SCRAPER_TOKEN in your .env file.")
+
+TARGET_URL = "http://httpbin.org/ip"
 
 def run_quick_test():
     print("--- 1. Initialize Thordata Client ---")
@@ -24,7 +30,8 @@ def run_quick_test():
         )
         
         print(f"--- 2. Requesting via Proxy: {TARGET_URL} ---")
-        response = client.get(TARGET_URL, timeout=15)
+        # This request goes through the Residential Proxy Network
+        response = client.get(TARGET_URL, timeout=30)
 
         if response.status_code == 200:
             data = response.json()
@@ -39,6 +46,6 @@ def run_quick_test():
         print(f"❌ An unexpected error occurred: {e}")
 
 if __name__ == "__main__":
-    print("=== Thordata SDK Quick Test ===")
+    print("=== Thordata SDK Quick Start ===")
     run_quick_test()
-    print("===============================")
+    print("================================")

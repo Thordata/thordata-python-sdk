@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "thordata-sdk"
+version = "0.3.0"  # Major structure change = Minor version bump
+description = "The Official Python SDK for Thordata - AI Data Infrastructure & Proxy Network."
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "Apache-2.0"}
+authors = [
+  {name = "Thordata Developer Team", email = "support@thordata.com"}
+]
+keywords = ["web scraping", "proxy", "ai", "llm", "data-mining", "serp", "thordata"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Internet :: WWW/HTTP",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "requests>=2.25.0",
+    "aiohttp>=3.8.0",  # For the async client
+]
+
+[project.urls]
+"Homepage" = "https://www.thordata.com"
+"Documentation" = "https://github.com/Thordata/thordata-python-sdk#readme"
+"Source" = "https://github.com/Thordata/thordata-python-sdk"
+"Tracker" = "https://github.com/Thordata/thordata-python-sdk/issues"
+
+# 关键配置：告诉 setuptools 源码在 src 目录下
+[tool.setuptools.packages.find]
+where = ["src"]

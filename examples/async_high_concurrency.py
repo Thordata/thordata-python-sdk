@@ -1,17 +1,23 @@
-# examples/async_high_concurrency.py
 # Goal: Demonstrate high-concurrency requests using AsyncThordataClient
 
 import os
 import asyncio
 import aiohttp
-from thordata_sdk import AsyncThordataClient
+from dotenv import load_dotenv
+from thordata import AsyncThordataClient
 
-# --- Configuration ---
-SCRAPER_TOKEN = os.getenv("THORDATA_SCRAPER_TOKEN", "fb6b478700dbbdf3651f314dde1e673a") 
-PUBLIC_TOKEN = os.getenv("THORDATA_PUBLIC_TOKEN", "placeholder_token")
-PUBLIC_KEY = os.getenv("THORDATA_PUBLIC_KEY", "placeholder_key")
+load_dotenv()
+
+SCRAPER_TOKEN = os.getenv("THORDATA_SCRAPER_TOKEN")
+PUBLIC_TOKEN = os.getenv("THORDATA_PUBLIC_TOKEN")
+PUBLIC_KEY = os.getenv("THORDATA_PUBLIC_KEY")
+
+if not SCRAPER_TOKEN:
+    print("❌ Error: Please configure your .env file.")
+    exit(1)
 
 # Target: Request multiple endpoints concurrently
+# In a real scenario, these would be different product pages or search queries.
 TARGET_URLS = [
     "http://httpbin.org/ip",
     "http://httpbin.org/ip",
@@ -26,7 +32,7 @@ async def fetch_url(client: AsyncThordataClient, url: str, index: int):
         # Note: client.get returns an awaited ClientResponse
         response = await client.get(url, headers={'X-Request-Index': str(index)})
         
-        # In aiohttp, we should ensure we read the body to release the connection
+        # In aiohttp, we must read the body to release the connection
         try:
             data = await response.json()
             print(f"[Req {index}] ✅ Success | Status: {response.status} | IP: {data.get('origin')}")
@@ -58,10 +64,13 @@ async def run_async_test():
         tasks = [fetch_url(client, url, i) for i, url in enumerate(TARGET_URLS)]
         
         # Execute concurrently
+        start_time = asyncio.get_event_loop().time()
         results = await asyncio.gather(*tasks)
+        duration = asyncio.get_event_loop().time() - start_time
         
         print("\n--- 3. Summary ---")
         print(f"Total Requests: {len(results)}")
+        print(f"Time Taken: {duration:.2f} seconds")
 
 if __name__ == "__main__":
     print("=== Thordata SDK Async Test ===")

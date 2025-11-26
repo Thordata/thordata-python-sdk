@@ -1,7 +1,7 @@
 import requests
 import requests_mock
 import pytest
-from thordata_sdk.client import ThordataClient
+from thordata.client import ThordataClient
 
 # Mock Credentials
 TEST_SCRAPER = "mock_scraper_token"

@@ -1,86 +1,168 @@
 # Thordata Python SDK
 
 <h4 align="center">
-  The Official Python Client for the Thordata Proxy Network & Web Scraper API.
+  Official Python client for Thordata's Proxy Network, SERP API, Universal Scraping API, and Web Scraper API.
   <br>
-  <i>High-performance, async-ready, designed for AI Agents and large-scale data collection.</i>
+  <i>Async-ready, built for AI agents and large-scale data collection.</i>
 </h4>
 
 <p align="center">
-  <a href="https://pypi.org/project/thordata-sdk/"><img src="https://img.shields.io/pypi/v/thordata-sdk?color=blue" alt="PyPI version"></a>
-  <a href="https://github.com/Thordata/thordata-python-sdk/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License"></a>
-  <a href="https://python.org"><img src="https://img.shields.io/badge/python-3.8+-blue" alt="Python Versions"></a>
+  <a href="https://pypi.org/project/thordata-sdk/">
+    <img src="https://img.shields.io/pypi/v/thordata-sdk?color=blue" alt="PyPI version">
+  </a>
+  <a href="https://github.com/Thordata/thordata-python-sdk/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License">
+  </a>
+  <a href="https://python.org">
+    <img src="https://img.shields.io/badge/python-3.8+-blue" alt="Python Versions">
+  </a>
 </p>
 
 ---
 
-## 🛠 Installation
-
-Install via pip:
+## Installation
 
 ```bash
 pip install thordata-sdk
 ```
 
-## ⚡ Quick Start
+## Quick Start
 
-### 1. Proxy Usage (Simple GET Request)
-
-**Python**
+All examples below use the unified client:
 
 ```python
-from thordata_sdk import ThordataClient
+from thordata import ThordataClient, AsyncThordataClient
+```
 
-# Initialize with your credentials from the Thordata Dashboard
+You can copy `examples/.env.example` to `.env` and fill in your tokens from the Thordata Dashboard.
+
+### 1. Proxy Network (Simple GET)
+
+```python
+import os
+from dotenv import load_dotenv
+from thordata import ThordataClient
+
+load_dotenv()
+
 client = ThordataClient(
-    scraper_token="YOUR_SCRAPER_TOKEN", # From "Scraping Tool Token"
-    public_token="YOUR_PUBLIC_TOKEN",   # From "Public API"
-    public_key="YOUR_PUBLIC_KEY"        # From "Public API"
+    scraper_token=os.getenv("THORDATA_SCRAPER_TOKEN"),
+    public_token=os.getenv("THORDATA_PUBLIC_TOKEN"),
+    public_key=os.getenv("THORDATA_PUBLIC_KEY"),
 )
 
-# Send a request through the proxy
-response = client.get("http://httpbin.org/ip")
-print(response.json())
+resp = client.get("http://httpbin.org/ip")
+print(resp.json())
 ```
 
-### 2. Real-time SERP Search
-
-**Python**
+### 2. SERP API (Google, Bing, Yandex, DuckDuckGo)
 
 ```python
-results = client.serp_search("Thordata technology", engine="google")
-print(f"Results found: {len(results.get('organic', []))}")
+from thordata import ThordataClient, Engine
+
+client = ThordataClient("SCRAPER_TOKEN", "PUBLIC_TOKEN", "PUBLIC_KEY")
+
+results = client.serp_search(
+    query="Thordata technology",
+    engine=Engine.GOOGLE,
+    num=10,
+    # Any engine-specific parameters are passed via **kwargs
+    # e.g. type="shopping", location="United States"
+)
+
+print(len(results.get("organic", [])))
 ```
 
-### 3. Asynchronous Usage (High Concurrency)
+### 3. Universal Scraping API
 
-**Python**
+```python
+from thordata import ThordataClient
+
+client = ThordataClient("SCRAPER_TOKEN", "PUBLIC_TOKEN", "PUBLIC_KEY")
+
+html = client.universal_scrape(
+    url="https://www.google.com",
+    js_render=True,
+    output_format="HTML",
+)
+print(html[:200])
+```
+
+### 4. Web Scraper API (Task-based)
+
+```python
+import time
+from thordata import ThordataClient
+
+client = ThordataClient("SCRAPER_TOKEN", "PUBLIC_TOKEN", "PUBLIC_KEY")
+
+task_id = client.create_scraper_task(
+    file_name="demo_youtube_data",
+    spider_id="youtube_video-post_by-url",
+    spider_name="youtube.com",
+    individual_params={
+        "url": "https://www.youtube.com/@stephcurry/videos",
+        "order_by": "",
+        "num_of_posts": ""
+    },
+)
+
+for _ in range(10):
+    status = client.get_task_status(task_id)
+    print("Status:", status)
+    if status in ["Ready", "Success"]:
+        break
+    if status == "Failed":
+        raise RuntimeError("Task failed")
+    time.sleep(3)
+
+download_url = client.get_task_result(task_id)
+print("Download URL:", download_url)
+```
+
+### 5. Asynchronous Usage (High Concurrency)
 
 ```python
 import asyncio
-from thordata_sdk import AsyncThordataClient
+from thordata import AsyncThordataClient
 
 async def main():
-    async with AsyncThordataClient(scraper_token="...", public_token="...", public_key="...") as client:
-        response = await client.get("http://httpbin.org/ip")
-        print(await response.json())
+    async with AsyncThordataClient(
+        scraper_token="SCRAPER_TOKEN",
+        public_token="PUBLIC_TOKEN",
+        public_key="PUBLIC_KEY",
+    ) as client:
+        resp = await client.get("http://httpbin.org/ip")
+        print(await resp.json())
 
 asyncio.run(main())
 ```
 
-## ⚙️ Features Status
+More examples are available in the `examples/` directory.
+
+---
+
+## Features
 
 | Feature | Status | Description |
 |---------|--------|-------------|
-| Proxy Network | ✅ Stable | Synchronous & Asynchronous support via aiohttp. |
-| SERP API | ✅ Stable | Real-time Google/Bing/Yandex search results. |
-| Web Scraper | ✅ Stable | Async task management for scraping complex sites (e.g., YouTube). |
-| Authentication | ✅ Secure | Dual-token system for enhanced security. |
+| Proxy Network | Stable | Residential, ISP, Mobile, Datacenter via HTTP/HTTPS gateway. |
+| SERP API | Stable | Google / Bing / Yandex / DuckDuckGo, flexible parameters. |
+| Universal Scraping API | Stable | JS rendering, HTML / PNG output, antibot bypass. |
+| Web Scraper API | Stable | Task-based scraping for complex sites (YouTube, E-commerce). |
+| Async Client | Stable | aiohttp-based client for high-concurrency workloads. |
 
-## 📄 License
+---
+
+## Development & Contributing
+
+See `CONTRIBUTING.md` for local development and contribution guidelines.
+
+## License
 
 This project is licensed under the Apache License 2.0.
 
-## 📞 Support
+## Support
 
-For technical assistance, please contact support@thordata.com or verify your tokens in the Thordata Dashboard.
+For technical support, please contact support@thordata.com
+or verify your tokens and quotas in the Thordata Dashboard.
