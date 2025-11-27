@@ -1,12 +1,12 @@
-# 运行时依赖（SDK运行所需的库）
+# Runtime Dependencies (Libraries required for the SDK to run)
 requests>=2.28.1
 aiohttp>=3.8.1
 
-# 开发和测试依赖（非运行时必需，但用于开发和质量保障）
-pytest>=7.1.2
-requests-mock>=1.9.3
-aioresponses>=0.7.3
-pytest-asyncio>=0.19.0
+# Development and Testing Dependencies (Not essential for runtime, but used for development and quality assurance)
+pytest>=9.0.1
+requests-mock>=1.12.1
+aioresponses>=0.7.6
+pytest-asyncio>=0.24.0
 twine>=4.0.2
 build>=0.8.0
 python-dotenv>=1.0.0
