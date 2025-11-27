@@ -7,6 +7,9 @@
 </h4>
 
 <p align="center">
+  <a href="https://github.com/Thordata/thordata-python-sdk/actions/workflows/ci.yml">
+    <img src="https://github.com/Thordata/thordata-python-sdk/actions/workflows/ci.yml/badge.svg" alt="CI">
+  </a>
   <a href="https://pypi.org/project/thordata-sdk/">
     <img src="https://img.shields.io/pypi/v/thordata-sdk?color=blue" alt="PyPI version">
   </a>
