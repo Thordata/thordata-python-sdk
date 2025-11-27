@@ -26,7 +26,11 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          # Install the package itself
           python -m pip install -e .
+          # Explicitly install test dependencies (same as requirements.txt)
+          python -m pip install "pytest>=7,<9" "pytest-asyncio>=0.23.0" requests-mock aioresponses
+          # Optional: if you still want to use requirements.txt for local dev, keep this line
           if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
 
       - name: Run tests
