@@ -212,3 +212,6 @@ __marimo__/
 /build/
 /*.egg-info/
 /htmlcov/
+
+
+*.png
