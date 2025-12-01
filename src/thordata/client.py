@@ -2,7 +2,7 @@ import requests
 import logging
 import json
 import base64
-from typing import Dict, Any, Union, Optional
+from typing import Dict, Any, Union, Optional, List
 
 from .enums import Engine
 from .parameters import normalize_serp_params
@@ -53,6 +53,7 @@ class ThordataClient:
         self.base_url = "https://scraperapi.thordata.com"
         self.universal_url = "https://universalapi.thordata.com"
         self.api_url = "https://api.thordata.com/api/web-scraper-api"
+        self.locations_url = "https://api.thordata.com/api/locations"
 
         self.SERP_API_URL = f"{self.base_url}/request"
         self.UNIVERSAL_API_URL = f"{self.universal_url}/request"
@@ -350,3 +351,136 @@ class ThordataClient:
         except Exception as e:
             logger.error(f"Get Result Failed: {e}")
             raise
+        
+    def _get_locations(self, endpoint: str, params: Dict[str, str]) -> List[Dict[str, Any]]:
+        """
+        Internal helper to call the public locations API.
+
+        Args:
+            endpoint: One of 'countries', 'states', 'cities', 'asn'.
+            params: Query parameters (must include token, key, proxy_type, etc.)
+
+        Returns:
+            List of location records from the 'data' field.
+
+        Raises:
+            RuntimeError: If token/key are missing or API returns an error code.
+        """
+        if not self.public_token or not self.public_key:
+            raise RuntimeError(
+                "Public API token/key are required for locations endpoints. "
+                "Please provide 'public_token' and 'public_key' when "
+                "initializing ThordataClient."
+            )
+
+        url = f"{self.locations_url}/{endpoint}"
+        logger.info("Locations API request: %s", url)
+
+        # Use a direct requests.get here; no need to go through the proxy gateway.
+        response = requests.get(
+            url,
+            params=params,
+            timeout=30,
+        )
+        response.raise_for_status()
+
+        data = response.json()
+        if isinstance(data, dict):
+            code = data.get("code")
+            if code is not None and code != 200:
+                msg = data.get("msg", "")
+                raise RuntimeError(
+                    f"Locations API error ({endpoint}): code={code}, msg={msg}"
+                )
+            return data.get("data") or []
+        # Fallback: if backend ever returns a list directly
+        if isinstance(data, list):
+            return data
+        return []
+    
+    def list_countries(self, proxy_type: int = 1) -> List[Dict[str, Any]]:
+        """
+        List supported countries for Thordata residential or unlimited proxies.
+
+        Args:
+            proxy_type (int): 1 for residential proxies, 2 for unlimited proxies.
+
+        Returns:
+            List[Dict[str, Any]]: Each record contains 'country_code' and 'country_name'.
+        """
+        params = {
+            "token": self.public_token,
+            "key": self.public_key,
+            "proxy_type": str(proxy_type),
+        }
+        return self._get_locations("countries", params)
+
+    def list_states(self, country_code: str, proxy_type: int = 1) -> List[Dict[str, Any]]:
+        """
+        List supported states for a given country.
+
+        Args:
+            country_code (str): Country code (e.g., 'US').
+            proxy_type (int): 1 for residential proxies, 2 for unlimited proxies.
+
+        Returns:
+            List[Dict[str, Any]]: Each record contains 'state_code' and 'state_name'.
+        """
+        params = {
+            "token": self.public_token,
+            "key": self.public_key,
+            "proxy_type": str(proxy_type),
+            "country_code": country_code,
+        }
+        return self._get_locations("states", params)
+
+    def list_cities(
+        self,
+        country_code: str,
+        state_code: Optional[str] = None,
+        proxy_type: int = 1,
+    ) -> List[Dict[str, Any]]:
+        """
+        List supported cities for a given country (and optional state).
+
+        Args:
+            country_code (str): Country code (e.g., 'US').
+            state_code (Optional[str]): State code (e.g., 'alabama'), if applicable.
+            proxy_type (int): 1 for residential proxies, 2 for unlimited proxies.
+
+        Returns:
+            List[Dict[str, Any]]: Each record contains 'city_code' and 'city_name'.
+        """
+        params: Dict[str, str] = {
+            "token": self.public_token,
+            "key": self.public_key,
+            "proxy_type": str(proxy_type),
+            "country_code": country_code,
+        }
+        if state_code:
+            params["state_code"] = state_code
+
+        return self._get_locations("cities", params)
+
+    def list_asn(
+        self,
+        country_code: str,
+        proxy_type: int = 1,
+    ) -> List[Dict[str, Any]]:
+        """
+        List supported ASNs for a given country.
+
+        Args:
+            country_code (str): Country code (e.g., 'US').
+            proxy_type (int): 1 for residential proxies, 2 for unlimited proxies.
+
+        Returns:
+            List[Dict[str, Any]]: Each record contains 'asn_code' and 'asn_name'.
+        """
+        params = {
+            "token": self.public_token,
+            "key": self.public_key,
+            "proxy_type": str(proxy_type),
+            "country_code": country_code,
+        }
+        return self._get_locations("asn", params)
