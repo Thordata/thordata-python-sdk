@@ -7,6 +7,12 @@ from typing import Dict, Any, Union, Optional, List
 from .enums import Engine
 from .parameters import normalize_serp_params
 
+from .exceptions import (
+    ThordataAPIError,
+    ThordataAuthError,
+    ThordataRateLimitError,
+)
+
 # Configure a library-specific logger to avoid interfering with user's logging
 logger = logging.getLogger(__name__)
 
@@ -192,9 +198,15 @@ class ThordataClient:
                 return response.text
 
             # Check for API-level errors inside the JSON
-            if isinstance(resp_json, dict) and resp_json.get("code") \
-                    and resp_json.get("code") != 200:
-                raise Exception(f"Universal API Error: {resp_json}")
+            if isinstance(resp_json, dict):
+                code = resp_json.get("code")
+                if code is not None and code != 200:
+                    msg = f"Universal API Error: {resp_json}"
+                    if code in (401, 403):
+                        raise ThordataAuthError(msg, code=code, payload=resp_json)
+                    if code in (402, 429):
+                        raise ThordataRateLimitError(msg, code=code, payload=resp_json)
+                    raise ThordataAPIError(msg, code=code, payload=resp_json)
 
             # Case 1: Return HTML
             if "html" in resp_json:
@@ -274,9 +286,17 @@ class ThordataClient:
             )
             response.raise_for_status()
             data = response.json()
+            code = data.get("code")
 
-            if data.get("code") != 200:
-                raise Exception(f"Creation failed: {data}")
+            if code != 200:
+                msg = f"Creation failed: {data}"
+                if code in (401, 403):
+                    raise ThordataAuthError(msg, code=code, payload=data)
+                if code in (402, 429):
+                    # 402: balance/permissions; 429: rate limited
+                    raise ThordataRateLimitError(msg, code=code, payload=data)
+                raise ThordataAPIError(msg, code=code, payload=data)
+
             return data["data"]["task_id"]
         except Exception as e:
             logger.error(f"Task Creation Failed: {e}")
@@ -345,9 +365,16 @@ class ThordataClient:
             response.raise_for_status()
             data = response.json()
 
-            if data.get("code") == 200 and data.get("data"):
+            code = data.get("code")
+            if code == 200 and data.get("data"):
                 return data["data"]["download"]
-            raise Exception(f"API returned error: {data}")
+
+            msg = f"API returned error: {data}"
+            if code in (401, 403):
+                raise ThordataAuthError(msg, code=code, payload=data)
+            if code in (402, 429):
+                raise ThordataRateLimitError(msg, code=code, payload=data)
+            raise ThordataAPIError(msg, code=code, payload=data)
         except Exception as e:
             logger.error(f"Get Result Failed: {e}")
             raise

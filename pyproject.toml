@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "thordata-sdk"
-version = "0.3.0"  # Major structure change = Minor version bump
+version = "0.3.1"  # Major structure change = Minor version bump
 description = "The Official Python SDK for Thordata - AI Data Infrastructure & Proxy Network."
 readme = "README.md"
 requires-python = ">=3.8"
@@ -37,6 +37,6 @@ dependencies = [
 "Source" = "https://github.com/Thordata/thordata-python-sdk"
 "Tracker" = "https://github.com/Thordata/thordata-python-sdk/issues"
 
-# 关键配置：告诉 setuptools 源码在 src 目录下
+# tell setuptools codes in src 
 [tool.setuptools.packages.find]
 where = ["src"]
