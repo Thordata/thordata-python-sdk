@@ -1,3 +1,4 @@
+# Tests for ThordataClient error handling
 import json
 from typing import Any, Dict
 
