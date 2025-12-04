@@ -1,25 +1,38 @@
 """
-Demo: SERP API usage (Google / Bing / Yandex) with sync & async clients.
+Demo: SERP API usage (Google / Bing / Yandex / Google Shopping).
 
-- Shows how to use the Engine and GoogleSearchType enums.
-- Demonstrates parameter passthrough via **kwargs (e.g. Shopping search).
+Corresponds to the "SERP API -> Send your first request" section in the docs.
+
+Shows how to:
+- Use Engine and GoogleSearchType enums.
+- Pass engine-specific parameters (location, type, etc.) via kwargs.
+- Handle specific Thordata exceptions (RateLimit / Auth).
 """
 
-import os
+from __future__ import annotations
+
 import asyncio
 import logging
+import os
 
 from dotenv import load_dotenv
-from thordata import ThordataClient, AsyncThordataClient, Engine, GoogleSearchType
+from thordata import (
+    ThordataClient,
+    AsyncThordataClient,
+    Engine,
+    GoogleSearchType,
+    ThordataRateLimitError,
+    ThordataAuthError,
+)
 
 # Configure logging to see SDK internal logs (optional)
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 
 # Load credentials from .env
 load_dotenv()
 SCRAPER_TOKEN = os.getenv("THORDATA_SCRAPER_TOKEN")
-PUBLIC_TOKEN = os.getenv("THORDATA_PUBLIC_TOKEN")
-PUBLIC_KEY = os.getenv("THORDATA_PUBLIC_KEY")
+PUBLIC_TOKEN = os.getenv("THORDATA_PUBLIC_TOKEN", "")
+PUBLIC_KEY = os.getenv("THORDATA_PUBLIC_KEY", "")
 
 if not SCRAPER_TOKEN:
     raise ValueError(
@@ -32,33 +45,35 @@ def demo_sync_serp() -> None:
     """
     Demonstrates synchronous SERP usage:
     1) Bing search using Engine enum.
-    2) Google Shopping search using GoogleSearchType enum and **kwargs passthrough.
+    2) Google Shopping search using GoogleSearchType enum.
     """
     print("\n=== SERP API (Synchronous Client) ===")
     client = ThordataClient(SCRAPER_TOKEN, PUBLIC_TOKEN, PUBLIC_KEY)
 
-    # 1. Bing search using Engine enum
-    print("\n[1] Bing search using Engine.BING ...")
+    # 1. Bing search
+    print("\n[1] Bing search: 'Thordata SDK' ...")
     try:
         results = client.serp_search("Thordata SDK", engine=Engine.BING)
-        organic_count = len(results.get("organic", []))
-        print(f"✅ Bing search succeeded. Organic results: {organic_count}")
+        organic = results.get("organic", [])
+        print(f"✅ Bing search succeeded. Organic results: {len(organic)}")
+    except (ThordataRateLimitError, ThordataAuthError) as e:
+        print(f"❌ Bing search failed (Auth/Quota): {e}")
     except Exception as e:
-        print(f"❌ Bing search failed: {e}")
+        print(f"❌ Bing search failed (Generic): {e}")
 
-    # 2. Google Shopping search with advanced parameters
-    print("\n[2] Google Shopping search using GoogleSearchType.SHOPPING ...")
+    # 2. Google Shopping search
+    print("\n[2] Google Shopping search: 'iPhone 15' (location=US) ...")
     try:
         results = client.serp_search(
             "iPhone 15",
             engine=Engine.GOOGLE,
             type=GoogleSearchType.SHOPPING,  # or simply "shopping"
-            location="United States",        # extra parameter passed via **kwargs
+            location="United States",
             num=5,
         )
-        print("✅ Google Shopping search succeeded.")
-        # Optionally inspect the raw structure:
-        # print(json.dumps(results, indent=2))
+        # Shopping results structure might vary
+        shopping = results.get("shopping_results") or results.get("shopping") or []
+        print(f"✅ Google Shopping search succeeded. Items found: {len(shopping)}")
     except Exception as e:
         print(f"❌ Google Shopping search failed: {e}")
 
@@ -66,8 +81,7 @@ def demo_sync_serp() -> None:
 async def demo_async_serp() -> None:
     """
     Demonstrates asynchronous SERP usage with Yandex.
-    This validates the normalize_serp_params() logic for engines using 'text'
-    instead of 'q' as the query parameter.
+    Shows how normalize_serp_params handles 'text' vs 'q' automatically.
     """
     print("\n=== SERP API (Asynchronous Client) ===")
 
@@ -77,14 +91,11 @@ async def demo_async_serp() -> None:
         public_key=PUBLIC_KEY,
     ) as client:
 
-        print("\n[3] Yandex search (async) ...")
+        print("\n[3] Yandex search (async): 'Python async' ...")
         try:
             results = await client.serp_search("Python async", engine=Engine.YANDEX)
-            if "organic" in results or "search_metadata" in results:
-                status = results.get("search_metadata", {}).get("status")
-                print(f"✅ Yandex async search succeeded. Status: {status}")
-            else:
-                print(f"⚠️ Yandex returned 200 but content seems empty: {results}")
+            status = results.get("search_metadata", {}).get("status", "Unknown")
+            print(f"✅ Yandex async search succeeded. Status: {status}")
         except Exception as e:
             print(f"❌ Yandex async search failed: {e}")
 
