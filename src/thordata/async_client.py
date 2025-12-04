@@ -7,6 +7,11 @@ from typing import Optional, Dict, Any, Union
 # Import shared logic
 from .enums import Engine
 from .parameters import normalize_serp_params
+from .exceptions import (
+    ThordataAPIError,
+    ThordataAuthError,
+    ThordataRateLimitError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +73,7 @@ class AsyncThordataClient:
         """Internal helper to ensure session exists."""
         if self._session is None or self._session.closed:
             raise RuntimeError(
-                "Client session not initialized. Use 'async with ThordataClient(...) as client:'"
+                "Client session not initialized. Use 'async with AsyncThordataClient(...) as client:'"
             )
         return self._session
 
@@ -170,9 +175,15 @@ class AsyncThordataClient:
                 return await response.text()
 
             # Check API error codes
-            if isinstance(resp_json, dict) and resp_json.get("code") \
-                    and resp_json.get("code") != 200:
-                raise Exception(f"Universal API Error: {resp_json}")
+            if isinstance(resp_json, dict):
+                code = resp_json.get("code")
+                if code is not None and code != 200:
+                    msg = f"Universal API Error: {resp_json}"
+                    if code in (401, 403):
+                        raise ThordataAuthError(msg, code=code, payload=resp_json)
+                    if code in (402, 429):
+                        raise ThordataRateLimitError(msg, code=code, payload=resp_json)
+                    raise ThordataAPIError(msg, code=code, payload=resp_json)
 
             if "html" in resp_json:
                 return resp_json["html"]
@@ -230,9 +241,17 @@ class AsyncThordataClient:
         ) as response:
             response.raise_for_status()
             data = await response.json()
-            
-            if data.get("code") != 200:
-                raise Exception(f"Creation failed: {data}")
+            code = data.get("code")
+
+            if code != 200:
+                msg = f"Creation failed: {data}"
+                if code in (401, 403):
+                    raise ThordataAuthError(msg, code=code, payload=data)
+                if code in (402, 429):
+                    # 402: balance/permissions; 429: rate limited
+                    raise ThordataRateLimitError(msg, code=code, payload=data)
+                raise ThordataAPIError(msg, code=code, payload=data)
+
             return data["data"]["task_id"]
 
     async def get_task_status(self, task_id: str) -> str:
@@ -276,6 +295,14 @@ class AsyncThordataClient:
             self.SCRAPER_DOWNLOAD_URL, data=payload, headers=headers
         ) as response:
             data = await response.json()
-            if data.get("code") == 200 and data.get("data"):
+            code = data.get("code")
+
+            if code == 200 and data.get("data"):
                 return data["data"]["download"]
-            raise Exception(f"Result Error: {data}")
+
+            msg = f"Result Error: {data}"
+            if code in (401, 403):
+                raise ThordataAuthError(msg, code=code, payload=data)
+            if code in (402, 429):
+                raise ThordataRateLimitError(msg, code=code, payload=data)
+            raise ThordataAPIError(msg, code=code, payload=data)
