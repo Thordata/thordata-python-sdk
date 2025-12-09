@@ -68,6 +68,8 @@ class ThordataClient:
         self.SCRAPER_DOWNLOAD_URL = f"{self.api_url}/tasks-download"
 
         # Initialize Session with Proxy settings
+        # This session defaults to using the Thordata proxy gateway for all requests.
+        # We will override this with proxies={} for API control calls.
         self.session = requests.Session()
         self.session.proxies = {
             "http": self.proxy_url,
@@ -77,6 +79,8 @@ class ThordataClient:
     def get(self, url: str, **kwargs) -> requests.Response:
         """
         Send a standard GET request through the Thordata Residential Proxy Network.
+        
+        NOTE: This method intentionally uses the proxy tunnel configured in self.session.
 
         Args:
             url (str): The target URL.
@@ -98,15 +102,6 @@ class ThordataClient:
     ) -> Dict[str, Any]:
         """
         Execute a real-time SERP (Search Engine Results Page) search.
-        
-        Args:
-            query (str): The search keywords.
-            engine (Union[Engine, str]): The search engine (e.g., 'google', 'bing').
-            num (int): Number of results to retrieve (default 10).
-            **kwargs: Additional parameters (e.g., type="shopping", location="London").
-
-        Returns:
-            Dict[str, Any]: The parsed JSON result from the search engine.
         """
         # Handle Enum or String input for engine
         engine_str = engine.value if isinstance(engine, Engine) else engine.lower()
@@ -121,11 +116,15 @@ class ThordataClient:
 
         logger.info(f"SERP Search: {engine_str} - {query}")
         try:
+            # ARCHITECTURE FIX: Use proxies={} to bypass the proxy tunnel for API control calls.
+            # This ensures we connect directly to the API endpoint, avoiding DNS issues 
+            # with the proxy gateway itself.
             response = self.session.post(
                 self.SERP_API_URL,
                 data=payload,
                 headers=headers,
-                timeout=60
+                timeout=60,
+                proxies={} 
             )
             response.raise_for_status()
             
@@ -151,17 +150,6 @@ class ThordataClient:
     ) -> Union[str, bytes]:
         """
         Unlock target pages via the Universal Scraping API.
-        Bypasses Cloudflare, CAPTCHAs, and antibot systems automatically.
-
-        Args:
-            url (str): Target URL.
-            js_render (bool): Whether to render JavaScript (Headless Browser).
-            output_format (str): "HTML" or "PNG" (screenshot).
-            country (Optional[str]): Geo-targeting country code (e.g., 'us').
-            block_resources (bool): Block images/css to speed up loading.
-
-        Returns:
-            Union[str, bytes]: HTML string or PNG bytes.
         """
         headers = {
             "Authorization": f"Bearer {self.scraper_token}",
@@ -180,11 +168,13 @@ class ThordataClient:
         logger.info(f"Universal Scrape: {url} (Format: {output_format})")
 
         try:
+            # ARCHITECTURE FIX: Direct connection to API
             response = self.session.post(
                 self.UNIVERSAL_API_URL,
                 data=payload,
                 headers=headers,
-                timeout=60
+                timeout=60,
+                proxies={} 
             )
             response.raise_for_status()
 
@@ -218,11 +208,9 @@ class ThordataClient:
                 if not png_str:
                     raise Exception("API returned empty PNG data")
 
-                # Clean Data URI Scheme if present (e.g., data:image/png;base64,...)
                 if "," in png_str:
                     png_str = png_str.split(",", 1)[1]
 
-                # Fix Base64 Padding
                 png_str = png_str.replace("\n", "").replace("\r", "")
                 missing_padding = len(png_str) % 4
                 if missing_padding:
@@ -247,19 +235,6 @@ class ThordataClient:
     ) -> str:
         """
         Create a generic Web Scraper Task (Async).
-        
-        IMPORTANT: You must retrieve the correct 'spider_id' and 'spider_name' 
-        from the Thordata Dashboard before calling this method.
-
-        Args:
-            file_name (str): Name for the output file.
-            spider_id (str): The ID of the spider (from Dashboard).
-            spider_name (str): The name of the spider (e.g., "youtube.com").
-            individual_params (Dict): Parameters specific to the spider.
-            universal_params (Optional[Dict]): Global settings for the scraper.
-
-        Returns:
-            str: The created task_id.
         """
         headers = {
             "Authorization": f"Bearer {self.scraper_token}",
@@ -279,10 +254,12 @@ class ThordataClient:
 
         logger.info(f"Creating Scraper Task: {spider_name} (ID: {spider_id})")
         try:
+            # ARCHITECTURE FIX: Direct connection to API
             response = self.session.post(
                 self.SCRAPER_BUILDER_URL,
                 data=payload,
-                headers=headers
+                headers=headers,
+                proxies={} 
             )
             response.raise_for_status()
             data = response.json()
@@ -293,7 +270,6 @@ class ThordataClient:
                 if code in (401, 403):
                     raise ThordataAuthError(msg, code=code, payload=data)
                 if code in (402, 429):
-                    # 402: balance/permissions; 429: rate limited
                     raise ThordataRateLimitError(msg, code=code, payload=data)
                 raise ThordataAPIError(msg, code=code, payload=data)
 
@@ -305,12 +281,6 @@ class ThordataClient:
     def get_task_status(self, task_id: str) -> str:
         """
         Check the status of an asynchronous scraping task.
-
-        Args:
-            task_id (str): The ID returned by create_scraper_task.
-
-        Returns:
-            str: The status string (e.g., "finished", "running", "error").
         """
         headers = {
             "token": self.public_token,
@@ -320,10 +290,12 @@ class ThordataClient:
         payload = {"tasks_ids": task_id}
 
         try:
+            # ARCHITECTURE FIX: Direct connection to API
             response = self.session.post(
                 self.SCRAPER_STATUS_URL,
                 data=payload,
-                headers=headers
+                headers=headers,
+                proxies={} 
             )
             response.raise_for_status()
             data = response.json()
@@ -340,13 +312,6 @@ class ThordataClient:
     def get_task_result(self, task_id: str, file_type: str = "json") -> str:
         """
         Retrieve the download URL for a completed task.
-
-        Args:
-            task_id (str): The task ID.
-            file_type (str): Format required (default "json").
-
-        Returns:
-            str: The URL to download the result file.
         """
         headers = {
             "token": self.public_token,
@@ -357,10 +322,12 @@ class ThordataClient:
 
         logger.info(f"Getting result URL for Task: {task_id}")
         try:
+            # ARCHITECTURE FIX: Direct connection to API
             response = self.session.post(
                 self.SCRAPER_DOWNLOAD_URL,
                 data=payload,
-                headers=headers
+                headers=headers,
+                proxies={} 
             )
             response.raise_for_status()
             data = response.json()
@@ -382,16 +349,6 @@ class ThordataClient:
     def _get_locations(self, endpoint: str, params: Dict[str, str]) -> List[Dict[str, Any]]:
         """
         Internal helper to call the public locations API.
-
-        Args:
-            endpoint: One of 'countries', 'states', 'cities', 'asn'.
-            params: Query parameters (must include token, key, proxy_type, etc.)
-
-        Returns:
-            List of location records from the 'data' field.
-
-        Raises:
-            RuntimeError: If token/key are missing or API returns an error code.
         """
         if not self.public_token or not self.public_key:
             raise RuntimeError(
@@ -403,7 +360,7 @@ class ThordataClient:
         url = f"{self.locations_url}/{endpoint}"
         logger.info("Locations API request: %s", url)
 
-        # Use a direct requests.get here; no need to go through the proxy gateway.
+        # Direct requests.get, no session proxy usage.
         response = requests.get(
             url,
             params=params,
@@ -420,21 +377,13 @@ class ThordataClient:
                     f"Locations API error ({endpoint}): code={code}, msg={msg}"
                 )
             return data.get("data") or []
-        # Fallback: if backend ever returns a list directly
+        
         if isinstance(data, list):
             return data
         return []
     
+    # The list_* methods below call _get_locations which is already safe.
     def list_countries(self, proxy_type: int = 1) -> List[Dict[str, Any]]:
-        """
-        List supported countries for Thordata residential or unlimited proxies.
-
-        Args:
-            proxy_type (int): 1 for residential proxies, 2 for unlimited proxies.
-
-        Returns:
-            List[Dict[str, Any]]: Each record contains 'country_code' and 'country_name'.
-        """
         params = {
             "token": self.public_token,
             "key": self.public_key,
@@ -443,16 +392,6 @@ class ThordataClient:
         return self._get_locations("countries", params)
 
     def list_states(self, country_code: str, proxy_type: int = 1) -> List[Dict[str, Any]]:
-        """
-        List supported states for a given country.
-
-        Args:
-            country_code (str): Country code (e.g., 'US').
-            proxy_type (int): 1 for residential proxies, 2 for unlimited proxies.
-
-        Returns:
-            List[Dict[str, Any]]: Each record contains 'state_code' and 'state_name'.
-        """
         params = {
             "token": self.public_token,
             "key": self.public_key,
@@ -467,17 +406,6 @@ class ThordataClient:
         state_code: Optional[str] = None,
         proxy_type: int = 1,
     ) -> List[Dict[str, Any]]:
-        """
-        List supported cities for a given country (and optional state).
-
-        Args:
-            country_code (str): Country code (e.g., 'US').
-            state_code (Optional[str]): State code (e.g., 'alabama'), if applicable.
-            proxy_type (int): 1 for residential proxies, 2 for unlimited proxies.
-
-        Returns:
-            List[Dict[str, Any]]: Each record contains 'city_code' and 'city_name'.
-        """
         params: Dict[str, str] = {
             "token": self.public_token,
             "key": self.public_key,
@@ -494,16 +422,6 @@ class ThordataClient:
         country_code: str,
         proxy_type: int = 1,
     ) -> List[Dict[str, Any]]:
-        """
-        List supported ASNs for a given country.
-
-        Args:
-            country_code (str): Country code (e.g., 'US').
-            proxy_type (int): 1 for residential proxies, 2 for unlimited proxies.
-
-        Returns:
-            List[Dict[str, Any]]: Each record contains 'asn_code' and 'asn_name'.
-        """
         params = {
             "token": self.public_token,
             "key": self.public_key,
