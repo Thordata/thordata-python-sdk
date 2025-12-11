@@ -269,6 +269,10 @@ class ThordataClient:
         country: Optional[str] = None,
         language: Optional[str] = None,
         search_type: Optional[str] = None,
+        device: Optional[str] = None,
+        render_js: Optional[bool] = None,
+        no_cache: Optional[bool] = None,
+        output_format: str = "json",
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """
@@ -280,11 +284,16 @@ class ThordataClient:
             num: Number of results to retrieve (default: 10).
             country: Country code for localized results (e.g., 'us').
             language: Language code for interface (e.g., 'en').
-            search_type: Type of search (images, news, shopping, videos).
+            search_type: Type of search (images, news, shopping, videos, etc.).
+            device: Device type ('desktop', 'mobile', 'tablet').
+            render_js: Enable JavaScript rendering in SERP (render_js=True).
+            no_cache: Disable internal caching (no_cache=True).
+            output_format: 'json' to return parsed JSON (default),
+                           'html' to return HTML wrapped in {'html': ...}.
             **kwargs: Additional engine-specific parameters.
 
         Returns:
-            Parsed JSON results from the search.
+            Dict[str, Any]: Parsed JSON results or a dict with 'html' key.
 
         Example:
             >>> # Basic search
@@ -296,7 +305,10 @@ class ThordataClient:
             ...     engine="google",
             ...     num=20,
             ...     country="us",
-            ...     search_type="shopping"
+            ...     search_type="shopping",
+            ...     device="mobile",
+            ...     render_js=True,
+            ...     no_cache=True,
             ... )
         """
         # Normalize engine
@@ -310,6 +322,10 @@ class ThordataClient:
             country=country,
             language=language,
             search_type=search_type,
+            device=device,
+            render_js=render_js,
+            no_cache=no_cache,
+            output_format=output_format,
             extra_params=kwargs,
         )
 
@@ -327,13 +343,24 @@ class ThordataClient:
             )
             response.raise_for_status()
 
-            data = response.json()
-            return parse_json_response(data)
+            # JSON mode (default)
+            if output_format.lower() == "json":
+                data = response.json()
+                return parse_json_response(data)
+
+            # HTML mode: wrap as dict to keep return type stable
+            return {"html": response.text}
 
         except requests.Timeout as e:
-            raise ThordataTimeoutError(f"SERP request timed out: {e}", original_error=e)
+            raise ThordataTimeoutError(
+                f"SERP request timed out: {e}",
+                original_error=e,
+            )
         except requests.RequestException as e:
-            raise ThordataNetworkError(f"SERP request failed: {e}", original_error=e)
+            raise ThordataNetworkError(
+                f"SERP request failed: {e}",
+                original_error=e,
+            )
 
     def serp_search_advanced(self, request: SerpRequest) -> Dict[str, Any]:
         """
@@ -345,7 +372,7 @@ class ThordataClient:
             request: A SerpRequest object with all parameters configured.
 
         Returns:
-            Parsed JSON results.
+            Dict[str, Any]: Parsed JSON results or dict with 'html' key.
 
         Example:
             >>> from thordata.models import SerpRequest
@@ -375,13 +402,22 @@ class ThordataClient:
             )
             response.raise_for_status()
 
-            data = response.json()
-            return parse_json_response(data)
+            if request.output_format.lower() == "json":
+                data = response.json()
+                return parse_json_response(data)
+
+            return {"html": response.text}
 
         except requests.Timeout as e:
-            raise ThordataTimeoutError(f"SERP request timed out: {e}", original_error=e)
+            raise ThordataTimeoutError(
+                f"SERP request timed out: {e}",
+                original_error=e,
+            )
         except requests.RequestException as e:
-            raise ThordataNetworkError(f"SERP request failed: {e}", original_error=e)
+            raise ThordataNetworkError(
+                f"SERP request failed: {e}",
+                original_error=e,
+            )
 
     # =========================================================================
     # Universal Scraping API (Web Unlocker) Methods

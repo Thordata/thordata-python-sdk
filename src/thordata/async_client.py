@@ -247,6 +247,10 @@ class AsyncThordataClient:
         country: Optional[str] = None,
         language: Optional[str] = None,
         search_type: Optional[str] = None,
+        device: Optional[str] = None,
+        render_js: Optional[bool] = None,
+        no_cache: Optional[bool] = None,
+        output_format: str = "json",
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """
@@ -259,10 +263,14 @@ class AsyncThordataClient:
             country: Country code for localization.
             language: Language code.
             search_type: Type of search.
+            device: Device type ('desktop', 'mobile', 'tablet').
+            render_js: Enable JavaScript rendering in SERP.
+            no_cache: Disable internal caching.
+            output_format: 'json' or 'html'.
             **kwargs: Additional parameters.
 
         Returns:
-            Parsed JSON results.
+            Parsed JSON results or dict with 'html' key.
         """
         session = self._get_session()
 
@@ -275,6 +283,10 @@ class AsyncThordataClient:
             country=country,
             language=language,
             search_type=search_type,
+            device=device,
+            render_js=render_js,
+            no_cache=no_cache,
+            output_format=output_format,
             extra_params=kwargs,
         )
 
@@ -285,16 +297,29 @@ class AsyncThordataClient:
 
         try:
             async with session.post(
-                self._serp_url, data=payload, headers=headers
+                self._serp_url,
+                data=payload,
+                headers=headers,
             ) as response:
                 response.raise_for_status()
-                data = await response.json()
-                return parse_json_response(data)
+
+                if output_format.lower() == "json":
+                    data = await response.json()
+                    return parse_json_response(data)
+
+                text = await response.text()
+                return {"html": text}
 
         except asyncio.TimeoutError as e:
-            raise ThordataTimeoutError(f"SERP request timed out: {e}", original_error=e)
+            raise ThordataTimeoutError(
+                f"SERP request timed out: {e}",
+                original_error=e,
+            )
         except aiohttp.ClientError as e:
-            raise ThordataNetworkError(f"SERP request failed: {e}", original_error=e)
+            raise ThordataNetworkError(
+                f"SERP request failed: {e}",
+                original_error=e,
+            )
 
     async def serp_search_advanced(self, request: SerpRequest) -> Dict[str, Any]:
         """
@@ -309,16 +334,29 @@ class AsyncThordataClient:
 
         try:
             async with session.post(
-                self._serp_url, data=payload, headers=headers
+                self._serp_url,
+                data=payload,
+                headers=headers,
             ) as response:
                 response.raise_for_status()
-                data = await response.json()
-                return parse_json_response(data)
+
+                if request.output_format.lower() == "json":
+                    data = await response.json()
+                    return parse_json_response(data)
+
+                text = await response.text()
+                return {"html": text}
 
         except asyncio.TimeoutError as e:
-            raise ThordataTimeoutError(f"SERP request timed out: {e}", original_error=e)
+            raise ThordataTimeoutError(
+                f"SERP request timed out: {e}",
+                original_error=e,
+            )
         except aiohttp.ClientError as e:
-            raise ThordataNetworkError(f"SERP request failed: {e}", original_error=e)
+            raise ThordataNetworkError(
+                f"SERP request failed: {e}",
+                original_error=e,
+            )
 
     # =========================================================================
     # Universal Scraping API Methods

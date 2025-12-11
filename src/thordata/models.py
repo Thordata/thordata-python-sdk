@@ -328,21 +328,23 @@ class SerpRequest:
         # Filters
         safe_search: Enable safe search filtering.
         time_filter: Time range filter (hour, day, week, month, year).
+        no_autocorrect: Disable automatic spelling correction (nfpr).
+        filter_duplicates: Enable/disable duplicate filtering.
+
+        # Device & Rendering
+        device: Device type ('desktop', 'mobile', 'tablet').
+        render_js: Enable JavaScript rendering in SERP (render_js=True/False).
+        no_cache: Disable internal caching (no_cache=True/False).
+
+        # Output
+        output_format: 'json' (default) or 'html'.
 
         # Advanced
-        device: Device type (desktop, mobile, tablet).
-        extra_params: Additional parameters to pass through.
+        ludocid: Google Place ID.
+        kgmid: Google Knowledge Graph ID.
 
-    Example:
-        >>> req = SerpRequest(
-        ...     query="python programming",
-        ...     engine="google",
-        ...     num=20,
-        ...     country="us",
-        ...     language="en",
-        ...     search_type="news"
-        ... )
-        >>> payload = req.to_payload()
+        # Extra
+        extra_params: Additional parameters to pass through (ibp, lsig, si, uds, ...).
     """
 
     query: str
@@ -362,16 +364,21 @@ class SerpRequest:
     uule: Optional[str] = None  # Encoded location
 
     # Search type
-    search_type: Optional[str] = None  # tbm parameter (isch, shop, nws, vid)
+    search_type: Optional[str] = None  # tbm parameter (isch, shop, nws, vid, ...)
 
     # Filters
     safe_search: Optional[bool] = None
-    time_filter: Optional[str] = None  # tbs parameter
+    time_filter: Optional[str] = None  # tbs parameter (time part)
     no_autocorrect: bool = False  # nfpr parameter
-    filter_duplicates: Optional[bool] = None
+    filter_duplicates: Optional[bool] = None  # filter parameter
 
-    # Advanced
-    device: Optional[str] = None
+    # Device & Rendering
+    device: Optional[str] = None  # 'desktop', 'mobile', 'tablet'
+    render_js: Optional[bool] = None  # render_js parameter
+    no_cache: Optional[bool] = None  # no_cache parameter
+
+    # Output format
+    output_format: str = "json"  # 'json' or 'html'
 
     # Advanced Google parameters
     ludocid: Optional[str] = None  # Google Place ID
@@ -423,7 +430,8 @@ class SerpRequest:
         payload: Dict[str, Any] = {
             "engine": engine,
             "num": str(self.num),
-            "json": "1",
+            # output_format: json=1 for JSON, json=0 for raw HTML
+            "json": "1" if self.output_format.lower() == "json" else "0",
         }
 
         # Handle query parameter (Yandex uses 'text', others use 'q')
@@ -432,8 +440,10 @@ class SerpRequest:
         else:
             payload["q"] = self.query
 
-        # Set URL based on google_domain or engine default
+        # Set URL / domain based on google_domain or engine default
         if self.google_domain:
+            # 显式设置 google_domain 参数，同时设置 url
+            payload["google_domain"] = self.google_domain
             payload["url"] = self.google_domain
         elif engine in self.ENGINE_URLS:
             payload["url"] = self.ENGINE_URLS[engine]
@@ -462,7 +472,7 @@ class SerpRequest:
         if self.uule:
             payload["uule"] = self.uule
 
-        # Search type
+        # Search type (tbm)
         if self.search_type:
             search_type_lower = self.search_type.lower()
             tbm_value = self.SEARCH_TYPE_MAP.get(search_type_lower, search_type_lower)
@@ -487,6 +497,13 @@ class SerpRequest:
         if self.device:
             payload["device"] = self.device.lower()
 
+        # Rendering & cache control
+        if self.render_js is not None:
+            payload["render_js"] = "True" if self.render_js else "False"
+
+        if self.no_cache is not None:
+            payload["no_cache"] = "True" if self.no_cache else "False"
+
         # Advanced Google parameters
         if self.ludocid:
             payload["ludocid"] = self.ludocid
@@ -494,7 +511,7 @@ class SerpRequest:
         if self.kgmid:
             payload["kgmid"] = self.kgmid
 
-        # Extra parameters
+        # Extra parameters (ibp, lsig, si, uds, etc.)
         payload.update(self.extra_params)
 
         return payload
