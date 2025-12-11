@@ -34,7 +34,6 @@ logger = logging.getLogger(__name__)
 
 
 
-
 @dataclass
 class RetryConfig:
     """
@@ -236,6 +235,7 @@ def with_retry(
 
         # Check if the function is async
         import asyncio
+
         if asyncio.iscoroutinefunction(func):
             return async_wrapper
         return sync_wrapper
