@@ -301,12 +301,13 @@ class Country(str, Enum):
 # =============================================================================
 
 
-def normalize_enum_value(value, enum_class: type) -> str:
+def normalize_enum_value(value: object, enum_class: type) -> str:
     """
     Safely convert an enum or string to its string value.
     """
     if isinstance(value, enum_class):
-        return value.value
+        # value is an enum member, get its .value
+        return str(getattr(value, "value", value)).lower()
     if isinstance(value, str):
         return value.lower()
     raise TypeError(

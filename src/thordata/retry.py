@@ -207,7 +207,8 @@ def with_retry(
 
             for attempt in range(config.max_retries + 1):
                 try:
-                    return await func(*args, **kwargs)
+                    result = await func(*args, **kwargs)
+                    return result
                 except Exception as e:
                     last_exception = e
 
@@ -231,7 +232,9 @@ def with_retry(
 
                     await asyncio.sleep(delay)
 
-            raise last_exception  # type: ignore
+            if last_exception:
+                raise last_exception
+            raise RuntimeError("Unexpected retry loop exit")
 
         # Check if the function is async
         import asyncio
@@ -301,8 +304,8 @@ class RetryableRequest:
     def __enter__(self) -> RetryableRequest:
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
-        return False
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        pass
 
     def should_continue(
         self, exception: Exception, status_code: Optional[int] = None

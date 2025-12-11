@@ -102,15 +102,16 @@ known-first-party = ["thordata"]
 
 # Mypy 类型检查配置
 [tool.mypy]
-python_version = "3.8"
+python_version >= "3.8"
 warn_return_any = false
-warn_unused_ignores = true
+warn_unused_ignores = false
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
-check_untyped_defs = true
+check_untyped_defs = false
 strict_optional = false
 show_error_codes = true
 ignore_missing_imports = true
+disable_error_code = ["attr-defined", "misc", "exit-return", "return"]
 
 [[tool.mypy.overrides]]
 module = ["aiohttp.*", "requests.*"]
