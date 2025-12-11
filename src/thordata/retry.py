@@ -200,15 +200,14 @@ def with_retry(
             raise last_exception  # type: ignore
 
         @wraps(func)
-        async def async_wrapper(*args: Any, **kwargs: Any) -> T:
+        async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             import asyncio
 
             last_exception: Optional[Exception] = None
 
             for attempt in range(config.max_retries + 1):
                 try:
-                    result = await func(*args, **kwargs)
-                    return result
+                    return await func(*args, **kwargs)
                 except Exception as e:
                     last_exception = e
 
