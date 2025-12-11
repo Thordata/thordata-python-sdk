@@ -1,11 +1,12 @@
 # src/thordata/parameters.py
 
-from typing import Dict, Any, Optional
+from typing import Any, Dict
+
 
 def normalize_serp_params(engine: str, query: str, **kwargs) -> Dict[str, Any]:
     """
     Normalizes parameters across different search engines to ensure a unified API surface.
-    
+
     Args:
         engine (str): The search engine to use (e.g., 'google', 'yandex').
         query (str): The search query string.
@@ -17,7 +18,7 @@ def normalize_serp_params(engine: str, query: str, **kwargs) -> Dict[str, Any]:
     # 1. Base parameters
     payload = {
         "num": str(kwargs.get("num", 10)),  # Default to 10 results
-        "json": "1",                        # Force JSON response
+        "json": "1",  # Force JSON response
         "engine": engine,
     }
 
@@ -29,14 +30,14 @@ def normalize_serp_params(engine: str, query: str, **kwargs) -> Dict[str, Any]:
             payload["url"] = "yandex.com"
     else:
         payload["q"] = query
-        
+
         # 3. Handle Default URLs for other engines
         if "url" not in kwargs:
             defaults = {
                 "google": "google.com",
                 "bing": "bing.com",
                 "duckduckgo": "duckduckgo.com",
-                "baidu": "baidu.com"
+                "baidu": "baidu.com",
             }
             if engine in defaults:
                 payload["url"] = defaults[engine]

@@ -7,13 +7,14 @@ Demonstrates:
 - Proper resource management (aiohttp).
 """
 
-import os
 import asyncio
-import time
 import logging
-import aiohttp
+import os
+import time
 
+import aiohttp
 from dotenv import load_dotenv
+
 from thordata import AsyncThordataClient
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
@@ -46,7 +47,9 @@ async def fetch_url(client: AsyncThordataClient, url: str, index: int) -> str:
             response.raise_for_status()
             data = await response.json()
             origin = data.get("origin")
-            print(f"[Req {index}] ✅ Success | Status: {response.status} | IP: {origin}")
+            print(
+                f"[Req {index}] ✅ Success | Status: {response.status} | IP: {origin}"
+            )
             return f"Req {index} OK"
 
     except aiohttp.ClientResponseError as e:

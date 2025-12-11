@@ -3,13 +3,14 @@ Tests for thordata.models module.
 """
 
 import pytest
+
 from thordata.models import (
     ProxyConfig,
     ProxyProduct,
-    StickySession,
-    SerpRequest,
-    UniversalScrapeRequest,
     ScraperTaskConfig,
+    SerpRequest,
+    StickySession,
+    UniversalScrapeRequest,
 )
 
 
@@ -153,20 +154,17 @@ class TestProxyConfig:
     def test_proxy_product_ports(self):
         """Test that different products have different default ports."""
         residential = ProxyConfig(
-            username="user", password="pass",
-            product=ProxyProduct.RESIDENTIAL
+            username="user", password="pass", product=ProxyProduct.RESIDENTIAL
         )
         assert residential.port == 9999
 
         mobile = ProxyConfig(
-            username="user", password="pass",
-            product=ProxyProduct.MOBILE
+            username="user", password="pass", product=ProxyProduct.MOBILE
         )
         assert mobile.port == 5555
 
         datacenter = ProxyConfig(
-            username="user", password="pass",
-            product=ProxyProduct.DATACENTER
+            username="user", password="pass", product=ProxyProduct.DATACENTER
         )
         assert datacenter.port == 7777
 
@@ -203,7 +201,7 @@ class TestSerpRequest:
         """Test basic SERP request payload."""
         request = SerpRequest(query="test query")
         payload = request.to_payload()
-        
+
         assert payload["q"] == "test query"
         assert payload["engine"] == "google"
         assert payload["num"] == "10"
@@ -213,7 +211,7 @@ class TestSerpRequest:
         """Test that Yandex uses 'text' instead of 'q'."""
         request = SerpRequest(query="test query", engine="yandex")
         payload = request.to_payload()
-        
+
         assert "text" in payload
         assert payload["text"] == "test query"
         assert "q" not in payload
@@ -266,7 +264,7 @@ class TestUniversalScrapeRequest:
         """Test basic Universal scrape request payload."""
         request = UniversalScrapeRequest(url="https://example.com")
         payload = request.to_payload()
-        
+
         assert payload["url"] == "https://example.com"
         assert payload["js_render"] == "False"
         assert payload["type"] == "html"
@@ -320,7 +318,7 @@ class TestScraperTaskConfig:
             parameters={"url": "https://example.com"},
         )
         payload = config.to_payload()
-        
+
         assert payload["file_name"] == "test_output"
         assert payload["spider_id"] == "test_spider"
         assert payload["spider_name"] == "example.com"

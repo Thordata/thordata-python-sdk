@@ -2,12 +2,13 @@
 Tests for AsyncThordataClient.
 """
 
-import pytest
 import aiohttp
+import pytest
 
 # 检查是否安装了 aioresponses
 try:
     from aioresponses import aioresponses
+
     HAS_AIORESPONSES = True
 except ImportError:
     HAS_AIORESPONSES = False

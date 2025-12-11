@@ -11,13 +11,15 @@ Shows how to:
 
 from __future__ import annotations
 
-import os
 import logging
+import os
+
 from dotenv import load_dotenv
+
 from thordata import (
+    ThordataAuthError,
     ThordataClient,
     ThordataRateLimitError,
-    ThordataAuthError,
 )
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")

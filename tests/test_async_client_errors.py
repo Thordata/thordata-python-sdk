@@ -37,7 +37,7 @@ class DummyResponse:
                 history=(),
                 status=self.status,
                 message="",
-                headers=None
+                headers=None,
             )
 
     async def json(self) -> Dict[str, Any]:
@@ -51,7 +51,9 @@ class DummyResponse:
 
 
 @pytest.mark.asyncio
-async def test_async_universal_scrape_rate_limit_error(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_async_universal_scrape_rate_limit_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """
     When Universal API returns JSON with code=402, the async client should raise
     ThordataRateLimitError.
@@ -78,7 +80,9 @@ async def test_async_universal_scrape_rate_limit_error(monkeypatch: pytest.Monke
 
 
 @pytest.mark.asyncio
-async def test_async_create_scraper_task_auth_error(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_async_create_scraper_task_auth_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """
     When Web Scraper API returns JSON with code=401, the async client should raise
     ThordataAuthError.

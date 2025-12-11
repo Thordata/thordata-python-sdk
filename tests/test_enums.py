@@ -3,12 +3,13 @@ Tests for thordata.enums module.
 """
 
 import pytest
+
 from thordata.enums import (
+    Continent,
+    Country,
     Engine,
     GoogleSearchType,
     ProxyType,
-    Continent,
-    Country,
     TaskStatus,
     normalize_enum_value,
 )

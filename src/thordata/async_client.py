@@ -7,7 +7,7 @@ built on aiohttp.
 Example:
     >>> import asyncio
     >>> from thordata import AsyncThordataClient
-    >>> 
+    >>>
     >>> async def main():
     ...     async with AsyncThordataClient(
     ...         scraper_token="your_token",
@@ -16,7 +16,7 @@ Example:
     ...     ) as client:
     ...         response = await client.get("https://httpbin.org/ip")
     ...         print(await response.json())
-    >>> 
+    >>>
     >>> asyncio.run(main())
 """
 
@@ -28,6 +28,13 @@ from typing import Any, Dict, List, Optional, Union
 
 import aiohttp
 
+from ._utils import (
+    build_auth_headers,
+    build_public_api_headers,
+    decode_base64_image,
+    extract_error_message,
+    parse_json_response,
+)
 from .enums import Engine, ProxyType
 from .exceptions import (
     ThordataConfigError,
@@ -37,19 +44,11 @@ from .exceptions import (
 )
 from .models import (
     ProxyConfig,
-    ProxyProduct,
+    ScraperTaskConfig,
     SerpRequest,
     UniversalScrapeRequest,
-    ScraperTaskConfig,
 )
 from .retry import RetryConfig
-from ._utils import (
-    parse_json_response,
-    decode_base64_image,
-    build_auth_headers,
-    build_public_api_headers,
-    extract_error_message,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +58,7 @@ class AsyncThordataClient:
     The official asynchronous Python client for Thordata.
 
     Designed for high-concurrency AI agents and data pipelines.
-    
+
     Args:
         scraper_token: The API token from your Dashboard.
         public_token: The public API token.
@@ -68,7 +67,7 @@ class AsyncThordataClient:
         proxy_port: Custom proxy gateway port.
         timeout: Default request timeout in seconds.
         retry_config: Configuration for automatic retries.
-    
+
     Example:
         >>> async with AsyncThordataClient(
         ...     scraper_token="token",
@@ -97,42 +96,40 @@ class AsyncThordataClient:
         """Initialize the Async Thordata Client."""
         if not scraper_token:
             raise ThordataConfigError("scraper_token is required")
-        
+
         self.scraper_token = scraper_token
         self.public_token = public_token
         self.public_key = public_key
-        
+
         # Proxy configuration
         self._proxy_host = proxy_host
         self._proxy_port = proxy_port
         self._default_timeout = aiohttp.ClientTimeout(total=timeout)
-        
+
         # Retry configuration
         self._retry_config = retry_config or RetryConfig()
-        
+
         # Pre-calculate proxy auth
         self._proxy_url = f"http://{proxy_host}:{proxy_port}"
         self._proxy_auth = aiohttp.BasicAuth(
-            login=f"td-customer-{scraper_token}",
-            password=""
+            login=f"td-customer-{scraper_token}", password=""
         )
-        
+
         # Store endpoint URLs
         self._serp_url = f"{self.BASE_URL}/request"
         self._universal_url = f"{self.UNIVERSAL_URL}/request"
         self._builder_url = f"{self.BASE_URL}/builder"
         self._status_url = f"{self.API_URL}/tasks-status"
         self._download_url = f"{self.API_URL}/tasks-download"
-        
+
         # Session initialized lazily
         self._session: Optional[aiohttp.ClientSession] = None
 
-    async def __aenter__(self) -> "AsyncThordataClient":
+    async def __aenter__(self) -> AsyncThordataClient:
         """Async context manager entry."""
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(
-                timeout=self._default_timeout,
-                trust_env=True
+                timeout=self._default_timeout, trust_env=True
             )
         return self
 
@@ -178,32 +175,25 @@ class AsyncThordataClient:
             The aiohttp response object.
         """
         session = self._get_session()
-        
+
         logger.debug(f"Async Proxy GET: {url}")
-        
+
         if proxy_config:
             proxy_url, proxy_auth = proxy_config.to_aiohttp_config()
         else:
             proxy_url = self._proxy_url
             proxy_auth = self._proxy_auth
-        
+
         try:
             return await session.get(
-                url,
-                proxy=proxy_url,
-                proxy_auth=proxy_auth,
-                **kwargs
+                url, proxy=proxy_url, proxy_auth=proxy_auth, **kwargs
             )
         except asyncio.TimeoutError as e:
             raise ThordataTimeoutError(
-                f"Async request timed out: {e}",
-                original_error=e
+                f"Async request timed out: {e}", original_error=e
             )
         except aiohttp.ClientError as e:
-            raise ThordataNetworkError(
-                f"Async request failed: {e}",
-                original_error=e
-            )
+            raise ThordataNetworkError(f"Async request failed: {e}", original_error=e)
 
     async def post(
         self,
@@ -224,32 +214,25 @@ class AsyncThordataClient:
             The aiohttp response object.
         """
         session = self._get_session()
-        
+
         logger.debug(f"Async Proxy POST: {url}")
-        
+
         if proxy_config:
             proxy_url, proxy_auth = proxy_config.to_aiohttp_config()
         else:
             proxy_url = self._proxy_url
             proxy_auth = self._proxy_auth
-        
+
         try:
             return await session.post(
-                url,
-                proxy=proxy_url,
-                proxy_auth=proxy_auth,
-                **kwargs
+                url, proxy=proxy_url, proxy_auth=proxy_auth, **kwargs
             )
         except asyncio.TimeoutError as e:
             raise ThordataTimeoutError(
-                f"Async request timed out: {e}",
-                original_error=e
+                f"Async request timed out: {e}", original_error=e
             )
         except aiohttp.ClientError as e:
-            raise ThordataNetworkError(
-                f"Async request failed: {e}",
-                original_error=e
-            )
+            raise ThordataNetworkError(f"Async request failed: {e}", original_error=e)
 
     # =========================================================================
     # SERP API Methods
@@ -268,7 +251,7 @@ class AsyncThordataClient:
     ) -> Dict[str, Any]:
         """
         Execute an async SERP search.
-        
+
         Args:
             query: Search keywords.
             engine: Search engine.
@@ -282,9 +265,9 @@ class AsyncThordataClient:
             Parsed JSON results.
         """
         session = self._get_session()
-        
+
         engine_str = engine.value if isinstance(engine, Engine) else engine.lower()
-        
+
         request = SerpRequest(
             query=query,
             engine=engine_str,
@@ -294,64 +277,48 @@ class AsyncThordataClient:
             search_type=search_type,
             extra_params=kwargs,
         )
-        
+
         payload = request.to_payload()
         headers = build_auth_headers(self.scraper_token)
-        
+
         logger.info(f"Async SERP Search: {engine_str} - {query}")
-        
+
         try:
             async with session.post(
-                self._serp_url,
-                data=payload,
-                headers=headers
+                self._serp_url, data=payload, headers=headers
             ) as response:
                 response.raise_for_status()
                 data = await response.json()
                 return parse_json_response(data)
-                
+
         except asyncio.TimeoutError as e:
-            raise ThordataTimeoutError(
-                f"SERP request timed out: {e}",
-                original_error=e
-            )
+            raise ThordataTimeoutError(f"SERP request timed out: {e}", original_error=e)
         except aiohttp.ClientError as e:
-            raise ThordataNetworkError(
-                f"SERP request failed: {e}",
-                original_error=e
-            )
+            raise ThordataNetworkError(f"SERP request failed: {e}", original_error=e)
 
     async def serp_search_advanced(self, request: SerpRequest) -> Dict[str, Any]:
         """
         Execute an async SERP search using a SerpRequest object.
         """
         session = self._get_session()
-        
+
         payload = request.to_payload()
         headers = build_auth_headers(self.scraper_token)
-        
+
         logger.info(f"Async SERP Advanced: {request.engine} - {request.query}")
-        
+
         try:
             async with session.post(
-                self._serp_url,
-                data=payload,
-                headers=headers
+                self._serp_url, data=payload, headers=headers
             ) as response:
                 response.raise_for_status()
                 data = await response.json()
                 return parse_json_response(data)
-                
+
         except asyncio.TimeoutError as e:
-            raise ThordataTimeoutError(
-                f"SERP request timed out: {e}",
-                original_error=e
-            )
+            raise ThordataTimeoutError(f"SERP request timed out: {e}", original_error=e)
         except aiohttp.ClientError as e:
-            raise ThordataNetworkError(
-                f"SERP request failed: {e}",
-                original_error=e
-            )
+            raise ThordataNetworkError(f"SERP request failed: {e}", original_error=e)
 
     # =========================================================================
     # Universal Scraping API Methods
@@ -394,66 +361,59 @@ class AsyncThordataClient:
             wait_for=wait_for,
             extra_params=kwargs,
         )
-        
+
         return await self.universal_scrape_advanced(request)
 
     async def universal_scrape_advanced(
-        self,
-        request: UniversalScrapeRequest
+        self, request: UniversalScrapeRequest
     ) -> Union[str, bytes]:
         """
         Async scrape using a UniversalScrapeRequest object.
         """
         session = self._get_session()
-        
+
         payload = request.to_payload()
         headers = build_auth_headers(self.scraper_token)
-        
+
         logger.info(f"Async Universal Scrape: {request.url}")
-        
+
         try:
             async with session.post(
-                self._universal_url,
-                data=payload,
-                headers=headers
+                self._universal_url, data=payload, headers=headers
             ) as response:
                 response.raise_for_status()
-                
+
                 try:
                     resp_json = await response.json()
                 except ValueError:
                     if request.output_format.lower() == "png":
                         return await response.read()
                     return await response.text()
-                
+
                 # Check for API errors
                 if isinstance(resp_json, dict):
                     code = resp_json.get("code")
                     if code is not None and code != 200:
                         msg = extract_error_message(resp_json)
                         raise_for_code(
-                            f"Universal API Error: {msg}",
-                            code=code,
-                            payload=resp_json
+                            f"Universal API Error: {msg}", code=code, payload=resp_json
                         )
-                
+
                 if "html" in resp_json:
                     return resp_json["html"]
-                
+
                 if "png" in resp_json:
                     return decode_base64_image(resp_json["png"])
-                
+
                 return str(resp_json)
-                
+
         except asyncio.TimeoutError as e:
             raise ThordataTimeoutError(
-                f"Universal scrape timed out: {e}",
-                original_error=e
+                f"Universal scrape timed out: {e}", original_error=e
             )
         except aiohttp.ClientError as e:
             raise ThordataNetworkError(
-                f"Universal scrape failed: {e}",
-                original_error=e
+                f"Universal scrape failed: {e}", original_error=e
             )
 
     # =========================================================================
@@ -478,48 +438,38 @@ class AsyncThordataClient:
             parameters=parameters,
             universal_params=universal_params,
         )
-        
+
         return await self.create_scraper_task_advanced(config)
 
-    async def create_scraper_task_advanced(
-        self,
-        config: ScraperTaskConfig
-    ) -> str:
+    async def create_scraper_task_advanced(self, config: ScraperTaskConfig) -> str:
         """
         Create a task using ScraperTaskConfig.
         """
         session = self._get_session()
-        
+
         payload = config.to_payload()
         headers = build_auth_headers(self.scraper_token)
-        
+
         logger.info(f"Async Task Creation: {config.spider_name}")
-        
+
         try:
             async with session.post(
-                self._builder_url,
-                data=payload,
-                headers=headers
+                self._builder_url, data=payload, headers=headers
             ) as response:
                 response.raise_for_status()
                 data = await response.json()
-                
+
                 code = data.get("code")
                 if code != 200:
                     msg = extract_error_message(data)
                     raise_for_code(
-                        f"Task creation failed: {msg}",
-                        code=code,
-                        payload=data
+                        f"Task creation failed: {msg}", code=code, payload=data
                     )
-                
+
                 return data["data"]["task_id"]
-                
+
         except aiohttp.ClientError as e:
-            raise ThordataNetworkError(
-                f"Task creation failed: {e}",
-                original_error=e
-            )
+            raise ThordataNetworkError(f"Task creation failed: {e}", original_error=e)
 
     async def get_task_status(self, task_id: str) -> str:
         """
@@ -527,69 +477,54 @@ class AsyncThordataClient:
         """
         self._require_public_credentials()
         session = self._get_session()
-        
+
         headers = build_public_api_headers(self.public_token, self.public_key)
         payload = {"tasks_ids": task_id}
-        
+
         try:
             async with session.post(
-                self._status_url,
-                data=payload,
-                headers=headers
+                self._status_url, data=payload, headers=headers
             ) as response:
                 data = await response.json()
-                
+
                 if data.get("code") == 200 and data.get("data"):
                     for item in data["data"]:
                         if str(item.get("task_id")) == str(task_id):
                             return item.get("status", "unknown")
-                
+
                 return "unknown"
-                
+
         except Exception as e:
             logger.error(f"Async status check failed: {e}")
             return "error"
 
-    async def get_task_result(
-        self,
-        task_id: str,
-        file_type: str = "json"
-    ) -> str:
+    async def get_task_result(self, task_id: str, file_type: str = "json") -> str:
         """
         Get download URL for completed task.
         """
         self._require_public_credentials()
         session = self._get_session()
-        
+
         headers = build_public_api_headers(self.public_token, self.public_key)
         payload = {"tasks_id": task_id, "type": file_type}
-        
+
         logger.info(f"Async getting result for Task: {task_id}")
-        
+
         try:
             async with session.post(
-                self._download_url,
-                data=payload,
-                headers=headers
+                self._download_url, data=payload, headers=headers
             ) as response:
                 data = await response.json()
                 code = data.get("code")
-                
+
                 if code == 200 and data.get("data"):
                     return data["data"]["download"]
-                
+
                 msg = extract_error_message(data)
-                raise_for_code(
-                    f"Get result failed: {msg}",
-                    code=code,
-                    payload=data
-                )
-                
+                raise_for_code(f"Get result failed: {msg}", code=code, payload=data)
+
         except aiohttp.ClientError as e:
-            raise ThordataNetworkError(
-                f"Get result failed: {e}",
-                original_error=e
-            )
+            raise ThordataNetworkError(f"Get result failed: {e}", original_error=e)
 
     async def wait_for_task(
         self,
@@ -602,107 +537,114 @@ class AsyncThordataClient:
         Wait for a task to complete.
         """
         elapsed = 0.0
-        
+
         while elapsed < max_wait:
             status = await self.get_task_status(task_id)
-            
+
             logger.debug(f"Task {task_id} status: {status}")
-            
+
             terminal_statuses = {
-                "ready", "success", "finished",
-                "failed", "error", "cancelled"
+                "ready",
+                "success",
+                "finished",
+                "failed",
+                "error",
+                "cancelled",
             }
-            
+
             if status.lower() in terminal_statuses:
                 return status
-            
+
             await asyncio.sleep(poll_interval)
             elapsed += poll_interval
-        
-        raise TimeoutError(
-            f"Task {task_id} did not complete within {max_wait} seconds"
-        )
+
+        raise TimeoutError(f"Task {task_id} did not complete within {max_wait} seconds")
 
     # =========================================================================
     # Location API Methods
     # =========================================================================
 
     async def list_countries(
-        self,
-        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL
+        self, proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL
     ) -> List[Dict[str, Any]]:
         """List supported countries."""
         return await self._get_locations(
             "countries",
-            proxy_type=int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
+            proxy_type=(
+                int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
+            ),
         )
 
     async def list_states(
         self,
         country_code: str,
-        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL
+        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL,
     ) -> List[Dict[str, Any]]:
         """List supported states for a country."""
         return await self._get_locations(
             "states",
-            proxy_type=int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type,
-            country_code=country_code
+            proxy_type=(
+                int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
+            ),
+            country_code=country_code,
         )
 
     async def list_cities(
         self,
         country_code: str,
         state_code: Optional[str] = None,
-        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL
+        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL,
     ) -> List[Dict[str, Any]]:
         """List supported cities."""
         kwargs = {
-            "proxy_type": int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type,
-            "country_code": country_code
+            "proxy_type": (
+                int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
+            ),
+            "country_code": country_code,
         }
         if state_code:
             kwargs["state_code"] = state_code
-        
+
         return await self._get_locations("cities", **kwargs)
 
     async def list_asn(
         self,
         country_code: str,
-        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL
+        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL,
     ) -> List[Dict[str, Any]]:
         """List supported ASNs."""
         return await self._get_locations(
             "asn",
-            proxy_type=int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type,
-            country_code=country_code
+            proxy_type=(
+                int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
+            ),
+            country_code=country_code,
         )
 
     async def _get_locations(
-        self,
-        endpoint: str,
-        **kwargs: Any
+        self, endpoint: str, **kwargs: Any
     ) -> List[Dict[str, Any]]:
         """Internal async locations API call."""
         self._require_public_credentials()
-        
+
         params = {
             "token": self.public_token,
             "key": self.public_key,
         }
-        
+
         for key, value in kwargs.items():
             params[key] = str(value)
-        
+
         url = f"{self.LOCATIONS_URL}/{endpoint}"
-        
+
         logger.debug(f"Async Locations API: {url}")
-        
+
         # Create temporary session for this request (no proxy needed)
         async with aiohttp.ClientSession() as temp_session:
             async with temp_session.get(url, params=params) as response:
                 response.raise_for_status()
                 data = await response.json()
-                
+
                 if isinstance(data, dict):
                     code = data.get("code")
                     if code is not None and code != 200:
@@ -711,10 +653,10 @@ class AsyncThordataClient:
                             f"Locations API error ({endpoint}): code={code}, msg={msg}"
                         )
                     return data.get("data") or []
-                
+
                 if isinstance(data, list):
                     return data
-                
+
                 return []
 
     # =========================================================================

@@ -7,15 +7,16 @@ making it easier to discover available options via IDE autocomplete.
 
 from enum import Enum, IntEnum
 
-
 # =============================================================================
 # Continent Enum
 # =============================================================================
+
 
 class Continent(str, Enum):
     """
     Continent codes for geo-targeting.
     """
+
     AFRICA = "af"
     ANTARCTICA = "an"
     ASIA = "as"
@@ -29,10 +30,12 @@ class Continent(str, Enum):
 # Proxy Host Enum
 # =============================================================================
 
+
 class ProxyHost(str, Enum):
     """
     Available proxy gateway hosts.
     """
+
     DEFAULT = "pr.thordata.net"
     NORTH_AMERICA = "t.na.thordata.net"
     EUROPE = "t.eu.thordata.net"
@@ -43,6 +46,7 @@ class ProxyPort(IntEnum):
     """
     Available proxy gateway ports.
     """
+
     DEFAULT = 9999
     MOBILE = 5555
     DATACENTER = 7777
@@ -54,10 +58,12 @@ class ProxyPort(IntEnum):
 # Search Engine Enums
 # =============================================================================
 
+
 class Engine(str, Enum):
     """
     Supported search engines for SERP API.
     """
+
     GOOGLE = "google"
     BING = "bing"
     YANDEX = "yandex"
@@ -71,6 +77,7 @@ class GoogleSearchType(str, Enum):
     """
     Search types specific to Google.
     """
+
     SEARCH = "search"
     MAPS = "maps"
     SHOPPING = "shopping"
@@ -88,6 +95,7 @@ class BingSearchType(str, Enum):
     """
     Search types specific to Bing.
     """
+
     SEARCH = "search"
     IMAGES = "images"
     VIDEOS = "videos"
@@ -99,6 +107,7 @@ class Device(str, Enum):
     """
     Device types for SERP API.
     """
+
     DESKTOP = "desktop"
     MOBILE = "mobile"
     TABLET = "tablet"
@@ -108,6 +117,7 @@ class TimeRange(str, Enum):
     """
     Time range filters for search results.
     """
+
     HOUR = "hour"
     DAY = "day"
     WEEK = "week"
@@ -119,10 +129,12 @@ class TimeRange(str, Enum):
 # Proxy Enums
 # =============================================================================
 
+
 class ProxyType(IntEnum):
     """
     Types of proxy networks available.
     """
+
     RESIDENTIAL = 1
     UNLIMITED = 2
     DATACENTER = 3
@@ -134,6 +146,7 @@ class SessionType(str, Enum):
     """
     Proxy session types for connection persistence.
     """
+
     ROTATING = "rotating"
     STICKY = "sticky"
 
@@ -142,10 +155,12 @@ class SessionType(str, Enum):
 # Output Format Enums
 # =============================================================================
 
+
 class OutputFormat(str, Enum):
     """
     Output formats for Universal Scraping API.
     """
+
     HTML = "html"
     PNG = "png"
     PDF = "pdf"
@@ -157,6 +172,7 @@ class DataFormat(str, Enum):
     """
     Data formats for task result download.
     """
+
     JSON = "json"
     CSV = "csv"
     XLSX = "xlsx"
@@ -166,10 +182,12 @@ class DataFormat(str, Enum):
 # Task Status Enums
 # =============================================================================
 
+
 class TaskStatus(str, Enum):
     """
     Possible statuses for async scraping tasks.
     """
+
     PENDING = "pending"
     RUNNING = "running"
     READY = "ready"
@@ -184,8 +202,12 @@ class TaskStatus(str, Enum):
     def is_terminal(cls, status: "TaskStatus") -> bool:
         """Check if a status is terminal (no more updates expected)."""
         return status in {
-            cls.READY, cls.SUCCESS, cls.FINISHED,
-            cls.FAILED, cls.ERROR, cls.CANCELLED
+            cls.READY,
+            cls.SUCCESS,
+            cls.FINISHED,
+            cls.FAILED,
+            cls.ERROR,
+            cls.CANCELLED,
         }
 
     @classmethod
@@ -203,10 +225,12 @@ class TaskStatus(str, Enum):
 # Country Enum (常用国家)
 # =============================================================================
 
+
 class Country(str, Enum):
     """
     Common country codes for geo-targeting.
     """
+
     # North America
     US = "us"
     CA = "ca"
@@ -275,6 +299,7 @@ class Country(str, Enum):
 # =============================================================================
 # Helper Functions
 # =============================================================================
+
 
 def normalize_enum_value(value, enum_class: type) -> str:
     """

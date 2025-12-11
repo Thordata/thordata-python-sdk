@@ -2,10 +2,11 @@
 Tests for thordata.client module.
 """
 
-import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from thordata import ThordataClient, ProxyConfig
+import pytest
+
+from thordata import ThordataClient
 from thordata.exceptions import ThordataConfigError
 
 
@@ -60,15 +61,15 @@ class TestClientMethods:
         assert "country-us" in url
         assert "city-seattle" in url
 
-    @patch.object(ThordataClient, '_get_locations')
+    @patch.object(ThordataClient, "_get_locations")
     def test_list_countries(self, mock_get_locations, client):
         """Test list_countries method."""
         mock_get_locations.return_value = [
             {"country_code": "us", "country_name": "United States"},
         ]
-        
+
         result = client.list_countries()
-        
+
         mock_get_locations.assert_called_once()
         assert len(result) == 1
         assert result[0]["country_code"] == "us"
@@ -76,6 +77,6 @@ class TestClientMethods:
     def test_require_public_credentials(self):
         """Test that methods requiring public credentials raise error."""
         client = ThordataClient(scraper_token="test")
-        
+
         with pytest.raises(ThordataConfigError, match="public_token and public_key"):
             client.get_task_status("some_task_id")

@@ -11,15 +11,16 @@ Example:
 
 from __future__ import annotations
 
+import logging
 import os
 import time
-import logging
+
 from dotenv import load_dotenv
 
 from thordata import (
+    ThordataAuthError,
     ThordataClient,
     ThordataRateLimitError,
-    ThordataAuthError,
 )
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
@@ -63,7 +64,7 @@ def main() -> None:
         print("❌ Task creation failed: Insufficient balance or permissions (402).")
         print(f"   Details: {e}")
         return
-    except ThordataAuthError as e:
+    except ThordataAuthError:
         print("❌ Task creation failed: Authentication error (401/403).")
         return
     except Exception as e:

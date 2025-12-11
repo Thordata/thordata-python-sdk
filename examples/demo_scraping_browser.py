@@ -11,6 +11,7 @@ Usage:
 import asyncio
 import os
 import urllib.parse
+
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 
@@ -30,36 +31,37 @@ CDP_URL = f"wss://{encoded_user}:{encoded_pass}@{HOST}"
 
 async def run():
     print(f"Connecting to Scraping Browser at {HOST}...")
-    
+
     async with async_playwright() as pw:
         try:
             # Connect to the remote browser instance
             browser = await pw.chromium.connect_over_cdp(CDP_URL)
             print("✅ Connected to remote browser.")
-            
+
             # Create a new page/tab
             page = await browser.new_page()
-            
+
             # Example
             target_url = "https://example.com"
             print(f"Navigating to: {target_url}")
-            
+
             # Increased timeout for remote browsing
             await page.goto(target_url, timeout=60000, wait_until="domcontentloaded")
-            
+
             print("Waiting for product list...")
             await page.wait_for_selector("h1")
-            
+
             # Extract titles
             title = await page.title()
-            
+
             print(f"Page Title: {title}")
-                
+
             await browser.close()
             print("\nBrowser closed.")
-            
+
         except Exception as e:
             print(f"❌ Scraping failed: {e}")
+
 
 if __name__ == "__main__":
     asyncio.run(run())

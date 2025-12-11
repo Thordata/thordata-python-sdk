@@ -8,9 +8,11 @@ Demonstrates:
 - Sending a simple GET request via the residential proxy gateway.
 """
 
-import os
 import logging
+import os
+
 from dotenv import load_dotenv
+
 from thordata import ThordataClient
 
 # Configure logging

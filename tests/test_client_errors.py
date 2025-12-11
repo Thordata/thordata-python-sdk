@@ -9,8 +9,8 @@ import pytest
 import requests
 
 from thordata import (
-    ThordataClient,
     ThordataAuthError,
+    ThordataClient,
     ThordataRateLimitError,
 )
 

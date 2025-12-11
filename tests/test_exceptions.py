@@ -3,18 +3,19 @@ Tests for thordata.exceptions module.
 """
 
 import pytest
+
 from thordata.exceptions import (
-    ThordataError,
-    ThordataConfigError,
-    ThordataNetworkError,
-    ThordataTimeoutError,
     ThordataAPIError,
     ThordataAuthError,
+    ThordataConfigError,
+    ThordataError,
+    ThordataNetworkError,
     ThordataRateLimitError,
     ThordataServerError,
+    ThordataTimeoutError,
     ThordataValidationError,
-    raise_for_code,
     is_retryable_exception,
+    raise_for_code,
 )
 
 
