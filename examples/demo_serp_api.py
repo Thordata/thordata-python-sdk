@@ -1,106 +1,192 @@
 """
-Demo: SERP API usage (Google / Bing / Yandex / Google Shopping).
+SERP API Demo - Search Engine Results
 
-Corresponds to the "SERP API -> Send your first request" section in the docs.
+Demonstrates:
+- Google, Bing, Yandex search using Engine enum
+- Search types (Shopping, News, Images)
+- Advanced search with SerpRequest
+- Async SERP search
 
-Shows how to:
-- Use Engine and GoogleSearchType enums.
-- Pass engine-specific parameters (location, type, etc.) via kwargs.
-- Handle specific Thordata exceptions (RateLimit / Auth).
+Usage:
+    python examples/demo_serp_api.py
 """
-
-from __future__ import annotations
 
 import asyncio
 import logging
 import os
+import sys
 
 from dotenv import load_dotenv
 
 from thordata import (
+    ThordataClient,
     AsyncThordataClient,
     Engine,
-    GoogleSearchType,
+    SerpRequest,
     ThordataAuthError,
-    ThordataClient,
     ThordataRateLimitError,
 )
 
-# Configure logging to see SDK internal logs (optional)
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 
-# Load credentials from .env
 load_dotenv()
+
 SCRAPER_TOKEN = os.getenv("THORDATA_SCRAPER_TOKEN")
-PUBLIC_TOKEN = os.getenv("THORDATA_PUBLIC_TOKEN", "")
-PUBLIC_KEY = os.getenv("THORDATA_PUBLIC_KEY", "")
 
 if not SCRAPER_TOKEN:
-    raise ValueError(
-        "Missing THORDATA_SCRAPER_TOKEN. "
-        "Please copy .env.example to .env and fill in your credentials."
-    )
+    print("❌ Error: THORDATA_SCRAPER_TOKEN is missing in .env")
+    sys.exit(1)
 
 
-def demo_sync_serp() -> None:
-    """
-    Demonstrates synchronous SERP usage:
-    1) Bing search using Engine enum.
-    2) Google Shopping search using GoogleSearchType enum.
-    """
-    print("\n=== SERP API (Synchronous Client) ===")
-    client = ThordataClient(SCRAPER_TOKEN, PUBLIC_TOKEN, PUBLIC_KEY)
+def demo_basic_search():
+    """Basic Google search."""
+    print("\n" + "=" * 50)
+    print("1️⃣  Basic Google Search")
+    print("=" * 50)
 
-    # 1. Bing search
-    print("\n[1] Bing search: 'Thordata SDK' ...")
-    try:
-        results = client.serp_search("Thordata SDK", engine=Engine.BING)
-        organic = results.get("organic", [])
-        print(f"✅ Bing search succeeded. Organic results: {len(organic)}")
-    except (ThordataRateLimitError, ThordataAuthError) as e:
-        print(f"❌ Bing search failed (Auth/Quota): {e}")
-    except Exception as e:
-        print(f"❌ Bing search failed (Generic): {e}")
+    client = ThordataClient(scraper_token=SCRAPER_TOKEN)
 
-    # 2. Google Shopping search
-    print("\n[2] Google Shopping search: 'iPhone 15' (location=US) ...")
     try:
         results = client.serp_search(
-            "iPhone 15",
+            query="Python programming",
             engine=Engine.GOOGLE,
-            type=GoogleSearchType.SHOPPING,  # or simply "shopping"
-            location="United States",
             num=5,
         )
-        # Shopping results structure might vary
-        shopping = results.get("shopping_results") or results.get("shopping") or []
-        print(f"✅ Google Shopping search succeeded. Items found: {len(shopping)}")
+
+        organic = results.get("organic", [])
+        print(f"✅ Found {len(organic)} organic results:\n")
+
+        for i, item in enumerate(organic[:3], 1):
+            title = item.get("title", "No title")
+            link = item.get("link", "")
+            print(f"   {i}. {title}")
+            print(f"      {link}\n")
+
+    except ThordataRateLimitError as e:
+        print(f"❌ Rate limited: {e}")
+    except ThordataAuthError as e:
+        print(f"❌ Auth error: {e}")
     except Exception as e:
-        print(f"❌ Google Shopping search failed: {e}")
+        print(f"❌ Search failed: {e}")
 
 
-async def demo_async_serp() -> None:
-    """
-    Demonstrates asynchronous SERP usage with Yandex.
-    Shows how normalize_serp_params handles 'text' vs 'q' automatically.
-    """
-    print("\n=== SERP API (Asynchronous Client) ===")
+def demo_bing_search():
+    """Bing search example."""
+    print("\n" + "=" * 50)
+    print("2️⃣  Bing Search")
+    print("=" * 50)
 
-    async with AsyncThordataClient(
-        scraper_token=SCRAPER_TOKEN,
-        public_token=PUBLIC_TOKEN,
-        public_key=PUBLIC_KEY,
-    ) as client:
+    client = ThordataClient(scraper_token=SCRAPER_TOKEN)
 
-        print("\n[3] Yandex search (async): 'Python async' ...")
+    try:
+        results = client.serp_search(
+            query="machine learning",
+            engine=Engine.BING,
+            num=5,
+        )
+
+        organic = results.get("organic", [])
+        print(f"✅ Bing returned {len(organic)} results")
+
+    except Exception as e:
+        print(f"❌ Bing search failed: {e}")
+
+
+def demo_google_shopping():
+    """Google Shopping search."""
+    print("\n" + "=" * 50)
+    print("3️⃣  Google Shopping Search")
+    print("=" * 50)
+
+    client = ThordataClient(scraper_token=SCRAPER_TOKEN)
+
+    try:
+        results = client.serp_search(
+            query="laptop",
+            engine=Engine.GOOGLE,
+            search_type="shopping",
+            country="us",
+            num=5,
+        )
+
+        shopping = results.get("shopping_results", [])
+        print(f"✅ Found {len(shopping)} shopping results")
+
+        for item in shopping[:3]:
+            title = item.get("title", "Unknown")
+            price = item.get("price", "N/A")
+            print(f"   • {title} - {price}")
+
+    except Exception as e:
+        print(f"❌ Shopping search failed: {e}")
+
+
+def demo_advanced_search():
+    """Advanced search using SerpRequest."""
+    print("\n" + "=" * 50)
+    print("4️⃣  Advanced Search (SerpRequest)")
+    print("=" * 50)
+
+    client = ThordataClient(scraper_token=SCRAPER_TOKEN)
+
+    # Create detailed search request
+    request = SerpRequest(
+        query="AI news 2024",
+        engine="google",
+        num=10,
+        country="us",
+        language="en",
+        search_type="news",
+        time_filter="week",
+        safe_search=True,
+    )
+
+    print(f"   Query: {request.query}")
+    print(f"   Engine: {request.engine}")
+    print("   Type: News")
+    print("   Time: Past week")
+
+    try:
+        results = client.serp_search_advanced(request)
+        news = results.get("news_results", results.get("organic", []))
+        print(f"\n✅ Found {len(news)} news results")
+
+    except Exception as e:
+        print(f"❌ Advanced search failed: {e}")
+
+
+async def demo_async_search():
+    """Async SERP search."""
+    print("\n" + "=" * 50)
+    print("5️⃣  Async Search (Yandex)")
+    print("=" * 50)
+
+    async with AsyncThordataClient(scraper_token=SCRAPER_TOKEN) as client:
         try:
-            results = await client.serp_search("Python async", engine=Engine.YANDEX)
-            status = results.get("search_metadata", {}).get("status", "Unknown")
-            print(f"✅ Yandex async search succeeded. Status: {status}")
+            results = await client.serp_search(
+                query="Python async programming",
+                engine=Engine.YANDEX,
+                num=5,
+            )
+
+            organic = results.get("organic", [])
+            print(f"✅ Yandex returned {len(organic)} results")
+
         except Exception as e:
-            print(f"❌ Yandex async search failed: {e}")
+            print(f"❌ Async search failed: {e}")
 
 
 if __name__ == "__main__":
-    demo_sync_serp()
-    asyncio.run(demo_async_serp())
+    print("=" * 50)
+    print("   Thordata SDK - SERP API Demo")
+    print("=" * 50)
+
+    demo_basic_search()
+    demo_bing_search()
+    demo_google_shopping()
+    demo_advanced_search()
+    asyncio.run(demo_async_search())
+
+    print("\n" + "=" * 50)
+    print("   Demo Complete!")
+    print("=" * 50)

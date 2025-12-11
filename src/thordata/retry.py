@@ -21,7 +21,7 @@ import random
 import time
 from dataclasses import dataclass, field
 from functools import wraps
-from typing import Any, Callable, Optional, Set, Tuple, TypeVar
+from typing import Any, Callable, Optional, Set, Tuple
 
 from .exceptions import (
     ThordataNetworkError,
@@ -32,7 +32,7 @@ from .exceptions import (
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T")
+
 
 
 @dataclass
@@ -236,7 +236,6 @@ def with_retry(
 
         # Check if the function is async
         import asyncio
-
         if asyncio.iscoroutinefunction(func):
             return async_wrapper
         return sync_wrapper

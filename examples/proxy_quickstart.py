@@ -1,63 +1,160 @@
 """
-Demo: Basic Proxy Usage (Synchronous).
-
-Corresponds to the "Proxy -> Send your first request" section in the docs.
+Proxy Quick Start - Basic Usage
 
 Demonstrates:
-- Initializing ThordataClient with credentials.
-- Sending a simple GET request via the residential proxy gateway.
+- Basic proxy request
+- Geo-targeting with ProxyConfig
+- Sticky sessions with StickySession
+
+Usage:
+    python examples/proxy_quickstart.py
 """
 
 import logging
 import os
+import sys
 
 from dotenv import load_dotenv
 
-from thordata import ThordataClient
+from thordata import (
+    ThordataClient,
+    ProxyConfig,
+    StickySession,
+    ThordataError,
+)
 
-# Configure logging
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 
 load_dotenv()
 
 SCRAPER_TOKEN = os.getenv("THORDATA_SCRAPER_TOKEN")
-PUBLIC_TOKEN = os.getenv("THORDATA_PUBLIC_TOKEN", "")
-PUBLIC_KEY = os.getenv("THORDATA_PUBLIC_KEY", "")
+USERNAME = os.getenv("THORDATA_USERNAME")
+PASSWORD = os.getenv("THORDATA_PASSWORD")
 
 if not SCRAPER_TOKEN:
-    raise ValueError(
-        "Missing THORDATA_SCRAPER_TOKEN. "
-        "Please copy .env.example to .env and fill in your credentials."
-    )
-
-TARGET_URL = "http://httpbin.org/ip"
+    print("❌ Error: THORDATA_SCRAPER_TOKEN is missing in .env")
+    print("   Copy .env.example to .env and fill in your credentials.")
+    sys.exit(1)
 
 
-def run_quick_test() -> None:
-    print("--- 1. Initialize Thordata Client ---")
+def demo_basic_request():
+    """Basic proxy request without geo-targeting."""
+    print("\n" + "=" * 50)
+    print("1️⃣  Basic Proxy Request")
+    print("=" * 50)
+
+    client = ThordataClient(scraper_token=SCRAPER_TOKEN)
+
     try:
-        # Public tokens are optional for pure proxy usage, but good to have.
-        client = ThordataClient(
-            scraper_token=SCRAPER_TOKEN,
-            public_token=PUBLIC_TOKEN,
-            public_key=PUBLIC_KEY,
-        )
-
-        print(f"--- 2. Requesting via Proxy: {TARGET_URL} ---")
-        # This request is routed through Thordata Residential Proxies
-        response = client.get(TARGET_URL, timeout=30)
+        response = client.get("https://httpbin.org/ip", timeout=30)
         response.raise_for_status()
 
         data = response.json()
-        print("✅ Success! Request routed via Thordata.")
-        print(f"   Origin IP: {data.get('origin')}")
-        print(f"   Status Code: {response.status_code}")
+        print("✅ Success!")
+        print(f"   Proxy IP: {data.get('origin')}")
 
-    except Exception as e:
+    except ThordataError as e:
         print(f"❌ Request failed: {e}")
 
 
+def demo_geo_targeting():
+    """Geo-targeted request using ProxyConfig."""
+    print("\n" + "=" * 50)
+    print("2️⃣  Geo-Targeted Request (US)")
+    print("=" * 50)
+
+    if not USERNAME or not PASSWORD:
+        print("⚠️  Skipped: THORDATA_USERNAME and THORDATA_PASSWORD required")
+        return
+
+    client = ThordataClient(scraper_token=SCRAPER_TOKEN)
+
+    # Build proxy config with geo-targeting
+    proxy_config = ProxyConfig(
+        username=USERNAME,
+        password=PASSWORD,
+        country="us",
+        state="california",
+    )
+
+    print("   Target: US - California")
+    print(f"   Username: {proxy_config.build_username()}")
+
+    try:
+        response = client.get(
+            "https://ipinfo.io/json",
+            proxy_config=proxy_config,
+            timeout=30,
+        )
+        response.raise_for_status()
+
+        data = response.json()
+        print("✅ Success!")
+        print(f"   IP: {data.get('ip')}")
+        print(f"   Country: {data.get('country')}")
+        print(f"   Region: {data.get('region')}")
+        print(f"   City: {data.get('city')}")
+
+    except ThordataError as e:
+        print(f"❌ Request failed: {e}")
+
+
+def demo_sticky_session():
+    """Sticky session - same IP for multiple requests."""
+    print("\n" + "=" * 50)
+    print("3️⃣  Sticky Session (Same IP)")
+    print("=" * 50)
+
+    if not USERNAME or not PASSWORD:
+        print("⚠️  Skipped: THORDATA_USERNAME and THORDATA_PASSWORD required")
+        return
+
+    client = ThordataClient(scraper_token=SCRAPER_TOKEN)
+
+    # Create sticky session (auto-generates session ID)
+    session = StickySession(
+        username=USERNAME,
+        password=PASSWORD,
+        country="gb",
+        duration_minutes=10,
+    )
+
+    print(f"   Session ID: {session.session_id}")
+    print("   Duration: 10 minutes")
+    print("   Making 3 requests...")
+
+    ips = []
+    for i in range(3):
+        try:
+            response = client.get(
+                "https://httpbin.org/ip",
+                proxy_config=session,
+                timeout=30,
+            )
+            response.raise_for_status()
+            ip = response.json().get("origin")
+            ips.append(ip)
+            print(f"   Request {i + 1}: {ip}")
+
+        except ThordataError as e:
+            print(f"   Request {i + 1}: ❌ {e}")
+
+    # Check if all IPs are the same
+    if ips and len(set(ips)) == 1:
+        print("✅ All requests used the same IP!")
+    elif ips:
+        print(f"⚠️  Got {len(set(ips))} different IPs")
+
+
 if __name__ == "__main__":
-    print("=== Thordata SDK Quick Start ===")
-    run_quick_test()
-    print("================================")
+    print("=" * 50)
+    print("   Thordata SDK - Proxy Quick Start")
+    print("=" * 50)
+
+    demo_basic_request()
+    demo_geo_targeting()
+    demo_sticky_session()
+
+    print("\n" + "=" * 50)
+    print("   Demo Complete!")
+    print("=" * 50)

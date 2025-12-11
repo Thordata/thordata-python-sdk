@@ -1,102 +1,199 @@
 """
-Demo: Web Scraper API usage (Task-based scraping).
+Web Scraper API Demo - Task-Based Scraping
 
-Corresponds to the "Web Scraper API -> Send your first request" section in the docs.
+Demonstrates:
+- Creating async scraping tasks
+- Polling task status
+- Retrieving results
+- Using wait_for_task helper
 
-Example:
-- Creates a scraping task using a known Spider ID (from Dashboard).
-- Polls task status until completion.
-- Retrieves the download URL for the results.
+Usage:
+    python examples/demo_web_scraper_api.py
 """
-
-from __future__ import annotations
 
 import logging
 import os
-import time
+import sys
 
 from dotenv import load_dotenv
 
 from thordata import (
-    ThordataAuthError,
     ThordataClient,
-    ThordataRateLimitError,
+    ScraperTaskConfig,
+    ThordataError,
 )
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 
 load_dotenv()
+
 SCRAPER_TOKEN = os.getenv("THORDATA_SCRAPER_TOKEN")
 PUBLIC_TOKEN = os.getenv("THORDATA_PUBLIC_TOKEN")
 PUBLIC_KEY = os.getenv("THORDATA_PUBLIC_KEY")
 
-if not SCRAPER_TOKEN or not PUBLIC_TOKEN or not PUBLIC_KEY:
-    raise ValueError(
-        "Missing credentials. Please set THORDATA_SCRAPER_TOKEN, "
-        "THORDATA_PUBLIC_TOKEN, and THORDATA_PUBLIC_KEY in .env."
+if not SCRAPER_TOKEN:
+    print("❌ Error: THORDATA_SCRAPER_TOKEN is missing in .env")
+    sys.exit(1)
+
+if not PUBLIC_TOKEN or not PUBLIC_KEY:
+    print("❌ Error: PUBLIC_TOKEN and PUBLIC_KEY required for Web Scraper API")
+    print("   Set THORDATA_PUBLIC_TOKEN and THORDATA_PUBLIC_KEY in .env")
+    sys.exit(1)
+
+
+def demo_create_task():
+    """Create a web scraper task."""
+    print("\n" + "=" * 50)
+    print("1️⃣  Create Scraper Task")
+    print("=" * 50)
+
+    client = ThordataClient(
+        scraper_token=SCRAPER_TOKEN,
+        public_token=PUBLIC_TOKEN,
+        public_key=PUBLIC_KEY,
     )
 
-# You must replace these with a valid spider from your Thordata Dashboard
-SPIDER_ID = os.getenv("DEMO_SPIDER_ID", "youtube_video-post_by-url")
-SPIDER_NAME = os.getenv("DEMO_SPIDER_NAME", "youtube.com")
-SPIDER_PARAMS = {
-    "url": "https://www.youtube.com/@stephcurry/videos",
-    "order_by": "",
-    "num_of_posts": "",
-}
+    # Example: YouTube channel scrape
+    # Note: Get spider_id and spider_name from Thordata Dashboard
+    print("   Creating task for YouTube scraping...")
+    print("   (This is an example - adjust spider_id for your use case)")
 
-
-def main() -> None:
-    print("=== Thordata Web Scraper API Demo ===")
-    client = ThordataClient(SCRAPER_TOKEN, PUBLIC_TOKEN, PUBLIC_KEY)
-
-    # 1. Create Task
-    print(f"\n[1] Creating task for spider: {SPIDER_NAME} ({SPIDER_ID})...")
     try:
         task_id = client.create_scraper_task(
             file_name="demo_youtube_data",
-            spider_id=SPIDER_ID,
-            spider_name=SPIDER_NAME,
-            individual_params=SPIDER_PARAMS,
+            spider_id="youtube_video-post_by-url",  # From Dashboard
+            spider_name="youtube.com",
+            parameters={
+                "url": "https://www.youtube.com/@YouTube/videos",
+                "num_of_posts": "5",
+            },
         )
-        print(f"✅ Task created. ID: {task_id}")
-    except ThordataRateLimitError as e:
-        print("❌ Task creation failed: Insufficient balance or permissions (402).")
-        print(f"   Details: {e}")
-        return
-    except ThordataAuthError:
-        print("❌ Task creation failed: Authentication error (401/403).")
-        return
-    except Exception as e:
+
+        print("✅ Task created!")
+        print(f"   Task ID: {task_id}")
+        return task_id
+
+    except ThordataError as e:
         print(f"❌ Task creation failed: {e}")
-        return
+        return None
 
-    # 2. Poll Status
-    print("\n[2] Waiting for task completion...")
-    final_status = "Unknown"
-    for i in range(10):
-        final_status = client.get_task_status(task_id)
-        print(f"   Check {i + 1}: {final_status}")
-        if final_status.lower() in ["ready", "success", "finished", "completed"]:
-            break
-        if final_status.lower() in ["failed", "error"]:
-            print("❌ Task reported failure.")
-            return
-        time.sleep(3)
 
-    if final_status.lower() not in ["ready", "success", "finished", "completed"]:
-        print("⚠️ Task did not finish within the polling window.")
-        return
+def demo_poll_status(client: ThordataClient, task_id: str):
+    """Poll task status manually."""
+    print("\n" + "=" * 50)
+    print("2️⃣  Check Task Status")
+    print("=" * 50)
 
-    # 3. Get Download URL
-    print("\n[3] Fetching download URL...")
+    print(f"   Checking status for: {task_id}")
+
+    try:
+        status = client.get_task_status(task_id)
+        print(f"   Current status: {status}")
+        return status
+
+    except ThordataError as e:
+        print(f"❌ Status check failed: {e}")
+        return None
+
+
+def demo_wait_for_completion(client: ThordataClient, task_id: str):
+    """Wait for task to complete using helper."""
+    print("\n" + "=" * 50)
+    print("3️⃣  Wait for Completion")
+    print("=" * 50)
+
+    print(f"   Waiting for task {task_id}...")
+    print("   (Max wait: 60 seconds)")
+
+    try:
+        status = client.wait_for_task(
+            task_id,
+            poll_interval=5.0,
+            max_wait=60.0,
+        )
+
+        if status.lower() in ("ready", "success", "finished"):
+            print(f"✅ Task completed: {status}")
+            return True
+        else:
+            print(f"⚠️  Task ended with status: {status}")
+            return False
+
+    except TimeoutError:
+        print("⏱️  Task did not complete within 60 seconds")
+        return False
+    except ThordataError as e:
+        print(f"❌ Error waiting: {e}")
+        return False
+
+
+def demo_get_result(client: ThordataClient, task_id: str):
+    """Get task result download URL."""
+    print("\n" + "=" * 50)
+    print("4️⃣  Get Result")
+    print("=" * 50)
+
     try:
         download_url = client.get_task_result(task_id, file_type="json")
-        print("✅ Task result ready.")
-        print(f"📥 Download URL: {download_url}")
-    except Exception as e:
-        print(f"❌ Failed to get result URL: {e}")
+
+        print("✅ Result ready!")
+        print(f"   Download URL: {download_url}")
+
+    except ThordataError as e:
+        print(f"❌ Get result failed: {e}")
+
+
+def demo_using_config():
+    """Create task using ScraperTaskConfig."""
+    print("\n" + "=" * 50)
+    print("5️⃣  Using ScraperTaskConfig")
+    print("=" * 50)
+
+    config = ScraperTaskConfig(
+        file_name="demo_config_task",
+        spider_id="example-spider-id",
+        spider_name="example.com",
+        parameters={
+            "url": "https://example.com",
+            "depth": "1",
+        },
+        include_errors=True,
+    )
+
+    print("   ScraperTaskConfig created:")
+    print(f"   - file_name: {config.file_name}")
+    print(f"   - spider_id: {config.spider_id}")
+    print(f"   - spider_name: {config.spider_name}")
+
+    # To actually create the task:
+    # client.create_scraper_task_advanced(config)
 
 
 if __name__ == "__main__":
-    main()
+    print("=" * 50)
+    print("   Thordata SDK - Web Scraper API Demo")
+    print("=" * 50)
+
+    # Initialize client
+    client = ThordataClient(
+        scraper_token=SCRAPER_TOKEN,
+        public_token=PUBLIC_TOKEN,
+        public_key=PUBLIC_KEY,
+    )
+
+    # Demo the workflow
+    task_id = demo_create_task()
+
+    if task_id:
+        demo_poll_status(client, task_id)
+        completed = demo_wait_for_completion(client, task_id)
+
+        if completed:
+            demo_get_result(client, task_id)
+
+    # Show config usage
+    demo_using_config()
+
+    print("\n" + "=" * 50)
+    print("   Demo Complete!")
+    print("=" * 50)

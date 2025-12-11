@@ -1,98 +1,150 @@
 """
-Demo: High-concurrency requests using AsyncThordataClient.
+High-Concurrency Async Demo
 
 Demonstrates:
-- Async client initialization (context manager).
-- Concurrent execution using asyncio.gather.
-- Proper resource management (aiohttp).
+- AsyncThordataClient usage
+- Parallel requests with asyncio.gather
+- Performance measurement
+- Error handling in concurrent context
+
+Usage:
+    python examples/async_high_concurrency.py
 """
 
 import asyncio
 import logging
 import os
+import sys
 import time
 
-import aiohttp
 from dotenv import load_dotenv
 
-from thordata import AsyncThordataClient
+from thordata import (
+    AsyncThordataClient,
+    ThordataError,
+    ThordataNetworkError,
+    ThordataTimeoutError,
+)
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 
 load_dotenv()
 
 SCRAPER_TOKEN = os.getenv("THORDATA_SCRAPER_TOKEN")
-PUBLIC_TOKEN = os.getenv("THORDATA_PUBLIC_TOKEN", "")
-PUBLIC_KEY = os.getenv("THORDATA_PUBLIC_KEY", "")
 
 if not SCRAPER_TOKEN:
-    raise ValueError("Missing THORDATA_SCRAPER_TOKEN in .env file.")
+    print("❌ Error: THORDATA_SCRAPER_TOKEN is missing in .env")
+    sys.exit(1)
 
-# Target: Request multiple endpoints concurrently
-TARGET_URLS = [
-    "http://httpbin.org/ip",
-    "http://httpbin.org/ip",
-    "http://httpbin.org/ip",
-    "http://httpbin.org/ip",
-    "http://httpbin.org/ip",
-]
+# Number of concurrent requests
+CONCURRENCY = 10
 
 
-async def fetch_url(client: AsyncThordataClient, url: str, index: int) -> str:
-    """Async fetch a single URL."""
+async def fetch_ip(client: AsyncThordataClient, request_id: int) -> dict:
+    """Fetch IP through proxy, return result dict."""
+    url = "https://httpbin.org/ip"
+
     try:
-        # client.get returns an aiohttp.ClientResponse
-        # We use 'async with' to ensure the connection is released promptly.
-        async with await client.get(url) as response:
-            response.raise_for_status()
-            data = await response.json()
-            origin = data.get("origin")
-            print(
-                f"[Req {index}] ✅ Success | Status: {response.status} | IP: {origin}"
-            )
-            return f"Req {index} OK"
+        response = await client.get(url)
+        data = await response.json()
+        ip = data.get("origin", "Unknown")
 
-    except aiohttp.ClientResponseError as e:
-        print(f"[Req {index}] ❌ HTTP Error: {e.status}")
-        return f"Req {index} Fail"
-    except aiohttp.ClientError as e:
-        print(f"[Req {index}] ❌ Connection Error: {e}")
-        return f"Req {index} Fail"
+        return {
+            "id": request_id,
+            "status": "success",
+            "ip": ip,
+        }
+
+    except ThordataTimeoutError:
+        return {"id": request_id, "status": "timeout", "ip": None}
+    except ThordataNetworkError as e:
+        return {"id": request_id, "status": f"network_error: {e}", "ip": None}
+    except ThordataError as e:
+        return {"id": request_id, "status": f"error: {e}", "ip": None}
     except Exception as e:
-        print(f"[Req {index}] ❌ Unexpected Error: {e}")
-        return f"Req {index} Fail"
+        return {"id": request_id, "status": f"unexpected: {e}", "ip": None}
 
 
-async def run_async_test() -> None:
-    print("--- 1. Initialize Async Client ---")
+async def demo_concurrent_requests():
+    """Run multiple concurrent requests."""
+    print("\n" + "=" * 50)
+    print(f"🚀 Launching {CONCURRENCY} Concurrent Requests")
+    print("=" * 50)
 
-    # Context manager ensures the underlying session is closed properly
-    async with AsyncThordataClient(
-        scraper_token=SCRAPER_TOKEN,
-        public_token=PUBLIC_TOKEN,
-        public_key=PUBLIC_KEY,
-    ) as client:
+    start_time = time.perf_counter()
 
-        print(f"--- 2. Launching {len(TARGET_URLS)} concurrent tasks ---")
-
-        start_time = time.perf_counter()
-
+    async with AsyncThordataClient(scraper_token=SCRAPER_TOKEN) as client:
         # Create tasks
-        tasks = [fetch_url(client, url, i) for i, url in enumerate(TARGET_URLS)]
+        tasks = [fetch_ip(client, i + 1) for i in range(CONCURRENCY)]
 
-        # Execute concurrently
+        # Execute all concurrently
         results = await asyncio.gather(*tasks)
 
-        duration = time.perf_counter() - start_time
+    elapsed = time.perf_counter() - start_time
 
-        print("\n--- 3. Summary ---")
-        print(f"Total Requests: {len(results)}")
-        success_count = sum(1 for r in results if "OK" in r)
-        print(f"Success: {success_count} / {len(results)}")
-        print(f"Time Taken: {duration:.2f} seconds")
+    # Display results
+    print("\n📊 Results:")
+    success_count = 0
+    unique_ips = set()
+
+    for result in results:
+        status_icon = "✅" if result["status"] == "success" else "❌"
+        ip_display = result["ip"] or result["status"]
+        print(f"   {status_icon} Request {result['id']:2d}: {ip_display}")
+
+        if result["status"] == "success":
+            success_count += 1
+            unique_ips.add(result["ip"])
+
+    # Summary
+    print("\n" + "-" * 50)
+    print("📈 Summary:")
+    print(f"   Total requests:    {CONCURRENCY}")
+    print(f"   Successful:        {success_count}")
+    print(f"   Failed:            {CONCURRENCY - success_count}")
+    print(f"   Unique IPs:        {len(unique_ips)}")
+    print(f"   Total time:        {elapsed:.2f}s")
+    print(f"   Requests/second:   {CONCURRENCY / elapsed:.1f}")
+
+
+async def demo_serp_concurrent():
+    """Concurrent SERP searches."""
+    print("\n" + "=" * 50)
+    print("🔍 Concurrent SERP Searches")
+    print("=" * 50)
+
+    queries = ["python", "javascript", "rust", "golang", "typescript"]
+
+    async with AsyncThordataClient(scraper_token=SCRAPER_TOKEN) as client:
+
+        async def search(query: str) -> dict:
+            try:
+                results = await client.serp_search(query=query, num=3)
+                count = len(results.get("organic", []))
+                return {"query": query, "results": count, "status": "success"}
+            except Exception as e:
+                return {"query": query, "results": 0, "status": str(e)}
+
+        start = time.perf_counter()
+        results = await asyncio.gather(*[search(q) for q in queries])
+        elapsed = time.perf_counter() - start
+
+    print("\n📊 Search Results:")
+    for r in results:
+        icon = "✅" if r["status"] == "success" else "❌"
+        print(f"   {icon} '{r['query']}': {r['results']} results")
+
+    print(f"\n   Total time: {elapsed:.2f}s")
 
 
 if __name__ == "__main__":
-    print("=== Thordata SDK Async Test ===")
-    asyncio.run(run_async_test())
-    print("===============================")
+    print("=" * 50)
+    print("   Thordata SDK - Async High Concurrency Demo")
+    print("=" * 50)
+
+    asyncio.run(demo_concurrent_requests())
+    asyncio.run(demo_serp_concurrent())
+
+    print("\n" + "=" * 50)
+    print("   Demo Complete!")
+    print("=" * 50)
