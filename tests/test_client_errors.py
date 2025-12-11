@@ -1,4 +1,7 @@
-# Tests for ThordataClient error handling
+"""
+Tests for ThordataClient error handling.
+"""
+
 import json
 from typing import Any, Dict
 
@@ -15,12 +18,6 @@ from thordata import (
 class DummyResponse:
     """
     Minimal fake Response object for testing.
-
-    It only implements the methods/attributes that ThordataClient uses:
-      - .json()
-      - .raise_for_status()
-      - .text
-      - .content
     """
 
     def __init__(self, json_data: Dict[str, Any], status_code: int = 200) -> None:
@@ -28,8 +25,6 @@ class DummyResponse:
         self.status_code = status_code
 
     def raise_for_status(self) -> None:
-        # For these tests we rely on application-level "code" in JSON,
-        # so we don't raise HTTPError here unless you want to test that as well.
         if 400 <= self.status_code:
             raise requests.HTTPError(response=self)
 
@@ -46,7 +41,7 @@ class DummyResponse:
 
 
 def _make_client() -> ThordataClient:
-    # Tokens are dummy; network calls are mocked in each test.
+    """Create a test client with dummy tokens."""
     return ThordataClient(
         scraper_token="SCRAPER_TOKEN",
         public_token="PUBLIC_TOKEN",
@@ -61,10 +56,9 @@ def test_universal_scrape_rate_limit_error(monkeypatch: pytest.MonkeyPatch) -> N
     """
     client = _make_client()
 
-    def fake_post(self, url, data=None, headers=None, timeout=None):  # type: ignore[override]
+    def fake_post(self, url, data=None, headers=None, timeout=None):
         return DummyResponse({"code": 402, "msg": "Insufficient balance"})
 
-    # Patch requests.Session.post so that all POSTs in this test use fake_post.
     monkeypatch.setattr(requests.Session, "post", fake_post, raising=True)
 
     with pytest.raises(ThordataRateLimitError) as exc_info:
@@ -79,11 +73,11 @@ def test_universal_scrape_rate_limit_error(monkeypatch: pytest.MonkeyPatch) -> N
 def test_create_scraper_task_auth_error(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     When Web Scraper API returns JSON with code=401, the client should raise
-    ThordataAuthError, so callers can distinguish auth problems.
+    ThordataAuthError.
     """
     client = _make_client()
 
-    def fake_post(self, url, data=None, headers=None, timeout=None):  # type: ignore[override]
+    def fake_post(self, url, data=None, headers=None, timeout=None):
         return DummyResponse({"code": 401, "msg": "Unauthorized"})
 
     monkeypatch.setattr(requests.Session, "post", fake_post, raising=True)
@@ -93,7 +87,7 @@ def test_create_scraper_task_auth_error(monkeypatch: pytest.MonkeyPatch) -> None
             file_name="test.json",
             spider_id="dummy-spider",
             spider_name="example.com",
-            individual_params={"foo": "bar"},
+            parameters={"foo": "bar"},  # 注意：参数名改为 parameters
         )
 
     err = exc_info.value

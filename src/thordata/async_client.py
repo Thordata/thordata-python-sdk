@@ -1,16 +1,54 @@
-import aiohttp
-import logging
-import json
-import base64
-from typing import Optional, Dict, Any, Union
+"""
+Asynchronous client for the Thordata API.
 
-# Import shared logic
-from .enums import Engine
-from .parameters import normalize_serp_params
+This module provides the AsyncThordataClient for high-concurrency workloads,
+built on aiohttp.
+
+Example:
+    >>> import asyncio
+    >>> from thordata import AsyncThordataClient
+    >>> 
+    >>> async def main():
+    ...     async with AsyncThordataClient(
+    ...         scraper_token="your_token",
+    ...         public_token="your_public_token",
+    ...         public_key="your_public_key"
+    ...     ) as client:
+    ...         response = await client.get("https://httpbin.org/ip")
+    ...         print(await response.json())
+    >>> 
+    >>> asyncio.run(main())
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import Any, Dict, List, Optional, Union
+
+import aiohttp
+
+from .enums import Engine, ProxyType
 from .exceptions import (
-    ThordataAPIError,
-    ThordataAuthError,
-    ThordataRateLimitError,
+    ThordataConfigError,
+    ThordataNetworkError,
+    ThordataTimeoutError,
+    raise_for_code,
+)
+from .models import (
+    ProxyConfig,
+    ProxyProduct,
+    SerpRequest,
+    UniversalScrapeRequest,
+    ScraperTaskConfig,
+)
+from .retry import RetryConfig
+from ._utils import (
+    parse_json_response,
+    decode_base64_image,
+    build_auth_headers,
+    build_public_api_headers,
+    extract_error_message,
 )
 
 logger = logging.getLogger(__name__)
@@ -18,291 +56,675 @@ logger = logging.getLogger(__name__)
 
 class AsyncThordataClient:
     """
-    The official Asynchronous Python client for Thordata (built on aiohttp).
+    The official asynchronous Python client for Thordata.
+
     Designed for high-concurrency AI agents and data pipelines.
+    
+    Args:
+        scraper_token: The API token from your Dashboard.
+        public_token: The public API token.
+        public_key: The public API key.
+        proxy_host: Custom proxy gateway host.
+        proxy_port: Custom proxy gateway port.
+        timeout: Default request timeout in seconds.
+        retry_config: Configuration for automatic retries.
+    
+    Example:
+        >>> async with AsyncThordataClient(
+        ...     scraper_token="token",
+        ...     public_token="pub_token",
+        ...     public_key="pub_key"
+        ... ) as client:
+        ...     results = await client.serp_search("python")
     """
+
+    # API Endpoints (same as sync client)
+    BASE_URL = "https://scraperapi.thordata.com"
+    UNIVERSAL_URL = "https://universalapi.thordata.com"
+    API_URL = "https://api.thordata.com/api/web-scraper-api"
+    LOCATIONS_URL = "https://api.thordata.com/api/locations"
 
     def __init__(
         self,
         scraper_token: str,
-        public_token: str,
-        public_key: str,
-        proxy_host: str = "gate.thordata.com",
-        proxy_port: int = 22225
-    ):
-        """
-        Initialize the Async Client.
-        """
+        public_token: Optional[str] = None,
+        public_key: Optional[str] = None,
+        proxy_host: str = "pr.thordata.net",
+        proxy_port: int = 9999,
+        timeout: int = 30,
+        retry_config: Optional[RetryConfig] = None,
+    ) -> None:
+        """Initialize the Async Thordata Client."""
+        if not scraper_token:
+            raise ThordataConfigError("scraper_token is required")
+        
         self.scraper_token = scraper_token
         self.public_token = public_token
         self.public_key = public_key
-
-        # Pre-calculate proxy auth for performance
-        self.proxy_auth = aiohttp.BasicAuth(login=scraper_token, password='')
-        self.proxy_url = f"http://{proxy_host}:{proxy_port}"
-
-        # API Endpoints
-        self.base_url = "https://scraperapi.thordata.com"
-        self.universal_url = "https://universalapi.thordata.com"
-        self.api_url = "https://api.thordata.com/api/web-scraper-api"
-
-        self.SERP_API_URL = f"{self.base_url}/request"
-        self.UNIVERSAL_API_URL = f"{self.universal_url}/request"
-        self.SCRAPER_BUILDER_URL = f"{self.base_url}/builder"
-        self.SCRAPER_STATUS_URL = f"{self.api_url}/tasks-status"
-        self.SCRAPER_DOWNLOAD_URL = f"{self.api_url}/tasks-download"
-
-        # Session is initialized lazily or via context manager
+        
+        # Proxy configuration
+        self._proxy_host = proxy_host
+        self._proxy_port = proxy_port
+        self._default_timeout = aiohttp.ClientTimeout(total=timeout)
+        
+        # Retry configuration
+        self._retry_config = retry_config or RetryConfig()
+        
+        # Pre-calculate proxy auth
+        self._proxy_url = f"http://{proxy_host}:{proxy_port}"
+        self._proxy_auth = aiohttp.BasicAuth(
+            login=f"td-customer-{scraper_token}",
+            password=""
+        )
+        
+        # Store endpoint URLs
+        self._serp_url = f"{self.BASE_URL}/request"
+        self._universal_url = f"{self.UNIVERSAL_URL}/request"
+        self._builder_url = f"{self.BASE_URL}/builder"
+        self._status_url = f"{self.API_URL}/tasks-status"
+        self._download_url = f"{self.API_URL}/tasks-download"
+        
+        # Session initialized lazily
         self._session: Optional[aiohttp.ClientSession] = None
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "AsyncThordataClient":
+        """Async context manager entry."""
         if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession(trust_env=True)
+            self._session = aiohttp.ClientSession(
+                timeout=self._default_timeout,
+                trust_env=True
+            )
         return self
 
-    async def __aexit__(self, exc_type, exc, tb):
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Async context manager exit."""
         await self.close()
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the underlying aiohttp session."""
         if self._session and not self._session.closed:
             await self._session.close()
             self._session = None
 
     def _get_session(self) -> aiohttp.ClientSession:
-        """Internal helper to ensure session exists."""
+        """Get the session, raising if not initialized."""
         if self._session is None or self._session.closed:
             raise RuntimeError(
-                "Client session not initialized. Use 'async with AsyncThordataClient(...) as client:'"
+                "Client session not initialized. "
+                "Use 'async with AsyncThordataClient(...) as client:'"
             )
         return self._session
 
-    async def get(self, url: str, **kwargs) -> aiohttp.ClientResponse:
+    # =========================================================================
+    # Proxy Network Methods
+    # =========================================================================
+
+    async def get(
+        self,
+        url: str,
+        *,
+        proxy_config: Optional[ProxyConfig] = None,
+        **kwargs: Any,
+    ) -> aiohttp.ClientResponse:
         """
         Send an async GET request through the Proxy Network.
+
+        Args:
+            url: The target URL.
+            proxy_config: Custom proxy configuration.
+            **kwargs: Additional aiohttp arguments.
+
+        Returns:
+            The aiohttp response object.
         """
         session = self._get_session()
+        
+        logger.debug(f"Async Proxy GET: {url}")
+        
+        if proxy_config:
+            proxy_url, proxy_auth = proxy_config.to_aiohttp_config()
+        else:
+            proxy_url = self._proxy_url
+            proxy_auth = self._proxy_auth
+        
         try:
-            logger.debug(f"Async Proxy Request: {url}")
             return await session.get(
                 url,
-                proxy=self.proxy_url,
-                proxy_auth=self.proxy_auth,
+                proxy=proxy_url,
+                proxy_auth=proxy_auth,
                 **kwargs
             )
+        except asyncio.TimeoutError as e:
+            raise ThordataTimeoutError(
+                f"Async request timed out: {e}",
+                original_error=e
+            )
         except aiohttp.ClientError as e:
-            logger.error(f"Async Request failed: {e}")
-            raise
+            raise ThordataNetworkError(
+                f"Async request failed: {e}",
+                original_error=e
+            )
 
-    async def serp_search(
-        self, 
-        query: str, 
-        engine: Union[Engine, str] = Engine.GOOGLE, 
-        num: int = 10, 
-        **kwargs
-    ) -> Dict[str, Any]:
+    async def post(
+        self,
+        url: str,
+        *,
+        proxy_config: Optional[ProxyConfig] = None,
+        **kwargs: Any,
+    ) -> aiohttp.ClientResponse:
         """
-        Execute a real-time SERP search (Async).
+        Send an async POST request through the Proxy Network.
+
+        Args:
+            url: The target URL.
+            proxy_config: Custom proxy configuration.
+            **kwargs: Additional aiohttp arguments.
+
+        Returns:
+            The aiohttp response object.
         """
         session = self._get_session()
+        
+        logger.debug(f"Async Proxy POST: {url}")
+        
+        if proxy_config:
+            proxy_url, proxy_auth = proxy_config.to_aiohttp_config()
+        else:
+            proxy_url = self._proxy_url
+            proxy_auth = self._proxy_auth
+        
+        try:
+            return await session.post(
+                url,
+                proxy=proxy_url,
+                proxy_auth=proxy_auth,
+                **kwargs
+            )
+        except asyncio.TimeoutError as e:
+            raise ThordataTimeoutError(
+                f"Async request timed out: {e}",
+                original_error=e
+            )
+        except aiohttp.ClientError as e:
+            raise ThordataNetworkError(
+                f"Async request failed: {e}",
+                original_error=e
+            )
 
-        # 1. Handle Enum conversion
+    # =========================================================================
+    # SERP API Methods
+    # =========================================================================
+
+    async def serp_search(
+        self,
+        query: str,
+        *,
+        engine: Union[Engine, str] = Engine.GOOGLE,
+        num: int = 10,
+        country: Optional[str] = None,
+        language: Optional[str] = None,
+        search_type: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """
+        Execute an async SERP search.
+        
+        Args:
+            query: Search keywords.
+            engine: Search engine.
+            num: Number of results.
+            country: Country code for localization.
+            language: Language code.
+            search_type: Type of search.
+            **kwargs: Additional parameters.
+
+        Returns:
+            Parsed JSON results.
+        """
+        session = self._get_session()
+        
         engine_str = engine.value if isinstance(engine, Engine) else engine.lower()
-
-        # 2. Normalize parameters
-        payload = normalize_serp_params(engine_str, query, num=num, **kwargs)
-
-        headers = {
-            "Authorization": f"Bearer {self.scraper_token}",
-            "Content-Type": "application/x-www-form-urlencoded"
-        }
-
-        # 3. Execute Request
+        
+        request = SerpRequest(
+            query=query,
+            engine=engine_str,
+            num=num,
+            country=country,
+            language=language,
+            search_type=search_type,
+            extra_params=kwargs,
+        )
+        
+        payload = request.to_payload()
+        headers = build_auth_headers(self.scraper_token)
+        
         logger.info(f"Async SERP Search: {engine_str} - {query}")
-        async with session.post(
-            self.SERP_API_URL, data=payload, headers=headers
-        ) as response:
-            response.raise_for_status()
-            
-            data = await response.json()
-            # Handle double-encoded JSON strings if they occur
-            if isinstance(data, str):
-                try:
-                    data = json.loads(data)
-                except json.JSONDecodeError:
-                    pass
-            return data
+        
+        try:
+            async with session.post(
+                self._serp_url,
+                data=payload,
+                headers=headers
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+                return parse_json_response(data)
+                
+        except asyncio.TimeoutError as e:
+            raise ThordataTimeoutError(
+                f"SERP request timed out: {e}",
+                original_error=e
+            )
+        except aiohttp.ClientError as e:
+            raise ThordataNetworkError(
+                f"SERP request failed: {e}",
+                original_error=e
+            )
+
+    async def serp_search_advanced(self, request: SerpRequest) -> Dict[str, Any]:
+        """
+        Execute an async SERP search using a SerpRequest object.
+        """
+        session = self._get_session()
+        
+        payload = request.to_payload()
+        headers = build_auth_headers(self.scraper_token)
+        
+        logger.info(f"Async SERP Advanced: {request.engine} - {request.query}")
+        
+        try:
+            async with session.post(
+                self._serp_url,
+                data=payload,
+                headers=headers
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+                return parse_json_response(data)
+                
+        except asyncio.TimeoutError as e:
+            raise ThordataTimeoutError(
+                f"SERP request timed out: {e}",
+                original_error=e
+            )
+        except aiohttp.ClientError as e:
+            raise ThordataNetworkError(
+                f"SERP request failed: {e}",
+                original_error=e
+            )
+
+    # =========================================================================
+    # Universal Scraping API Methods
+    # =========================================================================
 
     async def universal_scrape(
         self,
         url: str,
+        *,
         js_render: bool = False,
-        output_format: str = "HTML",
+        output_format: str = "html",
         country: Optional[str] = None,
-        block_resources: bool = False
+        block_resources: Optional[str] = None,
+        wait: Optional[int] = None,
+        wait_for: Optional[str] = None,
+        **kwargs: Any,
     ) -> Union[str, bytes]:
         """
-        Async Universal Scraping (Bypass Cloudflare/CAPTCHA).
+        Async scrape using Universal API (Web Unlocker).
+
+        Args:
+            url: Target URL.
+            js_render: Enable JavaScript rendering.
+            output_format: "html" or "png".
+            country: Geo-targeting country.
+            block_resources: Resources to block.
+            wait: Wait time in ms.
+            wait_for: CSS selector to wait for.
+
+        Returns:
+            HTML string or PNG bytes.
+        """
+        request = UniversalScrapeRequest(
+            url=url,
+            js_render=js_render,
+            output_format=output_format,
+            country=country,
+            block_resources=block_resources,
+            wait=wait,
+            wait_for=wait_for,
+            extra_params=kwargs,
+        )
+        
+        return await self.universal_scrape_advanced(request)
+
+    async def universal_scrape_advanced(
+        self,
+        request: UniversalScrapeRequest
+    ) -> Union[str, bytes]:
+        """
+        Async scrape using a UniversalScrapeRequest object.
         """
         session = self._get_session()
-
-        headers = {
-            "Authorization": f"Bearer {self.scraper_token}",
-            "Content-Type": "application/x-www-form-urlencoded"
-        }
-
-        payload = {
-            "url": url,
-            "js_render": "True" if js_render else "False",
-            "type": output_format.lower(),
-            "block_resources": "True" if block_resources else "False"
-        }
-        if country:
-            payload["country"] = country
-
-        logger.info(f"Async Universal Scrape: {url}")
-        async with session.post(
-            self.UNIVERSAL_API_URL, data=payload, headers=headers
-        ) as response:
-            response.raise_for_status()
-
-            try:
-                resp_json = await response.json()
-            except json.JSONDecodeError:
-                # Fallback for raw content
-                if output_format.upper() == "PNG":
-                    return await response.read()
-                return await response.text()
-
-            # Check API error codes
-            if isinstance(resp_json, dict):
-                code = resp_json.get("code")
-                if code is not None and code != 200:
-                    msg = f"Universal API Error: {resp_json}"
-                    if code in (401, 403):
-                        raise ThordataAuthError(msg, code=code, payload=resp_json)
-                    if code in (402, 429):
-                        raise ThordataRateLimitError(msg, code=code, payload=resp_json)
-                    raise ThordataAPIError(msg, code=code, payload=resp_json)
-
-            if "html" in resp_json:
-                return resp_json["html"]
-
-            if "png" in resp_json:
-                png_str = resp_json["png"]
-                if not png_str:
-                    raise Exception("API returned empty PNG data")
-
-                # Clean Data URI Scheme
-                if "," in png_str:
-                    png_str = png_str.split(",", 1)[1]
-
-                # Fix Base64 Padding
-                png_str = png_str.replace("\n", "").replace("\r", "")
-                missing_padding = len(png_str) % 4
-                if missing_padding:
-                    png_str += '=' * (4 - missing_padding)
+        
+        payload = request.to_payload()
+        headers = build_auth_headers(self.scraper_token)
+        
+        logger.info(f"Async Universal Scrape: {request.url}")
+        
+        try:
+            async with session.post(
+                self._universal_url,
+                data=payload,
+                headers=headers
+            ) as response:
+                response.raise_for_status()
                 
-                return base64.b64decode(png_str)
+                try:
+                    resp_json = await response.json()
+                except ValueError:
+                    if request.output_format.lower() == "png":
+                        return await response.read()
+                    return await response.text()
+                
+                # Check for API errors
+                if isinstance(resp_json, dict):
+                    code = resp_json.get("code")
+                    if code is not None and code != 200:
+                        msg = extract_error_message(resp_json)
+                        raise_for_code(
+                            f"Universal API Error: {msg}",
+                            code=code,
+                            payload=resp_json
+                        )
+                
+                if "html" in resp_json:
+                    return resp_json["html"]
+                
+                if "png" in resp_json:
+                    return decode_base64_image(resp_json["png"])
+                
+                return str(resp_json)
+                
+        except asyncio.TimeoutError as e:
+            raise ThordataTimeoutError(
+                f"Universal scrape timed out: {e}",
+                original_error=e
+            )
+        except aiohttp.ClientError as e:
+            raise ThordataNetworkError(
+                f"Universal scrape failed: {e}",
+                original_error=e
+            )
 
-            return str(resp_json)
+    # =========================================================================
+    # Web Scraper API Methods
+    # =========================================================================
 
     async def create_scraper_task(
         self,
         file_name: str,
         spider_id: str,
         spider_name: str,
-        individual_params: Dict[str, Any],
-        universal_params: Optional[Dict[str, Any]] = None
+        parameters: Dict[str, Any],
+        universal_params: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
-        Create an Asynchronous Web Scraper Task.
+        Create an async Web Scraper task.
         """
-        session = self._get_session()
+        config = ScraperTaskConfig(
+            file_name=file_name,
+            spider_id=spider_id,
+            spider_name=spider_name,
+            parameters=parameters,
+            universal_params=universal_params,
+        )
+        
+        return await self.create_scraper_task_advanced(config)
 
-        headers = {
-            "Authorization": f"Bearer {self.scraper_token}",
-            "Content-Type": "application/x-www-form-urlencoded"
-        }
-
-        payload = {
-            "file_name": file_name,
-            "spider_id": spider_id,
-            "spider_name": spider_name,
-            "spider_parameters": json.dumps([individual_params]),
-            "spider_errors": "true"
-        }
-        if universal_params:
-            payload["spider_universal"] = json.dumps(universal_params)
-
-        logger.info(f"Async Task Creation: {spider_name}")
-        async with session.post(
-            self.SCRAPER_BUILDER_URL, data=payload, headers=headers
-        ) as response:
-            response.raise_for_status()
-            data = await response.json()
-            code = data.get("code")
-
-            if code != 200:
-                msg = f"Creation failed: {data}"
-                if code in (401, 403):
-                    raise ThordataAuthError(msg, code=code, payload=data)
-                if code in (402, 429):
-                    # 402: balance/permissions; 429: rate limited
-                    raise ThordataRateLimitError(msg, code=code, payload=data)
-                raise ThordataAPIError(msg, code=code, payload=data)
-
-            return data["data"]["task_id"]
-
-    async def get_task_status(self, task_id: str) -> str:
+    async def create_scraper_task_advanced(
+        self,
+        config: ScraperTaskConfig
+    ) -> str:
         """
-        Check task status.
-        """
-        session = self._get_session()
-
-        headers = {
-            "token": self.public_token,
-            "key": self.public_key,
-            "Content-Type": "application/x-www-form-urlencoded"
-        }
-        payload = {"tasks_ids": task_id}
-
-        async with session.post(
-            self.SCRAPER_STATUS_URL, data=payload, headers=headers
-        ) as response:
-            data = await response.json()
-            if data.get("code") == 200 and data.get("data"):
-                for item in data["data"]:
-                    if str(item.get("task_id")) == str(task_id):
-                        return item["status"]
-            return "Unknown"
-
-    async def get_task_result(self, task_id: str, file_type: str = "json") -> str:
-        """
-        Get the download URL for a finished task.
+        Create a task using ScraperTaskConfig.
         """
         session = self._get_session()
         
-        headers = {
+        payload = config.to_payload()
+        headers = build_auth_headers(self.scraper_token)
+        
+        logger.info(f"Async Task Creation: {config.spider_name}")
+        
+        try:
+            async with session.post(
+                self._builder_url,
+                data=payload,
+                headers=headers
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+                
+                code = data.get("code")
+                if code != 200:
+                    msg = extract_error_message(data)
+                    raise_for_code(
+                        f"Task creation failed: {msg}",
+                        code=code,
+                        payload=data
+                    )
+                
+                return data["data"]["task_id"]
+                
+        except aiohttp.ClientError as e:
+            raise ThordataNetworkError(
+                f"Task creation failed: {e}",
+                original_error=e
+            )
+
+    async def get_task_status(self, task_id: str) -> str:
+        """
+        Check async task status.
+        """
+        self._require_public_credentials()
+        session = self._get_session()
+        
+        headers = build_public_api_headers(self.public_token, self.public_key)
+        payload = {"tasks_ids": task_id}
+        
+        try:
+            async with session.post(
+                self._status_url,
+                data=payload,
+                headers=headers
+            ) as response:
+                data = await response.json()
+                
+                if data.get("code") == 200 and data.get("data"):
+                    for item in data["data"]:
+                        if str(item.get("task_id")) == str(task_id):
+                            return item.get("status", "unknown")
+                
+                return "unknown"
+                
+        except Exception as e:
+            logger.error(f"Async status check failed: {e}")
+            return "error"
+
+    async def get_task_result(
+        self,
+        task_id: str,
+        file_type: str = "json"
+    ) -> str:
+        """
+        Get download URL for completed task.
+        """
+        self._require_public_credentials()
+        session = self._get_session()
+        
+        headers = build_public_api_headers(self.public_token, self.public_key)
+        payload = {"tasks_id": task_id, "type": file_type}
+        
+        logger.info(f"Async getting result for Task: {task_id}")
+        
+        try:
+            async with session.post(
+                self._download_url,
+                data=payload,
+                headers=headers
+            ) as response:
+                data = await response.json()
+                code = data.get("code")
+                
+                if code == 200 and data.get("data"):
+                    return data["data"]["download"]
+                
+                msg = extract_error_message(data)
+                raise_for_code(
+                    f"Get result failed: {msg}",
+                    code=code,
+                    payload=data
+                )
+                
+        except aiohttp.ClientError as e:
+            raise ThordataNetworkError(
+                f"Get result failed: {e}",
+                original_error=e
+            )
+
+    async def wait_for_task(
+        self,
+        task_id: str,
+        *,
+        poll_interval: float = 5.0,
+        max_wait: float = 600.0,
+    ) -> str:
+        """
+        Wait for a task to complete.
+        """
+        elapsed = 0.0
+        
+        while elapsed < max_wait:
+            status = await self.get_task_status(task_id)
+            
+            logger.debug(f"Task {task_id} status: {status}")
+            
+            terminal_statuses = {
+                "ready", "success", "finished",
+                "failed", "error", "cancelled"
+            }
+            
+            if status.lower() in terminal_statuses:
+                return status
+            
+            await asyncio.sleep(poll_interval)
+            elapsed += poll_interval
+        
+        raise TimeoutError(
+            f"Task {task_id} did not complete within {max_wait} seconds"
+        )
+
+    # =========================================================================
+    # Location API Methods
+    # =========================================================================
+
+    async def list_countries(
+        self,
+        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL
+    ) -> List[Dict[str, Any]]:
+        """List supported countries."""
+        return await self._get_locations(
+            "countries",
+            proxy_type=int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
+        )
+
+    async def list_states(
+        self,
+        country_code: str,
+        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL
+    ) -> List[Dict[str, Any]]:
+        """List supported states for a country."""
+        return await self._get_locations(
+            "states",
+            proxy_type=int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type,
+            country_code=country_code
+        )
+
+    async def list_cities(
+        self,
+        country_code: str,
+        state_code: Optional[str] = None,
+        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL
+    ) -> List[Dict[str, Any]]:
+        """List supported cities."""
+        kwargs = {
+            "proxy_type": int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type,
+            "country_code": country_code
+        }
+        if state_code:
+            kwargs["state_code"] = state_code
+        
+        return await self._get_locations("cities", **kwargs)
+
+    async def list_asn(
+        self,
+        country_code: str,
+        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL
+    ) -> List[Dict[str, Any]]:
+        """List supported ASNs."""
+        return await self._get_locations(
+            "asn",
+            proxy_type=int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type,
+            country_code=country_code
+        )
+
+    async def _get_locations(
+        self,
+        endpoint: str,
+        **kwargs: Any
+    ) -> List[Dict[str, Any]]:
+        """Internal async locations API call."""
+        self._require_public_credentials()
+        
+        params = {
             "token": self.public_token,
             "key": self.public_key,
-            "Content-Type": "application/x-www-form-urlencoded"
         }
-        # Fixed: Use the file_type argument instead of hardcoding "json"
-        payload = {"tasks_id": task_id, "type": file_type}
+        
+        for key, value in kwargs.items():
+            params[key] = str(value)
+        
+        url = f"{self.LOCATIONS_URL}/{endpoint}"
+        
+        logger.debug(f"Async Locations API: {url}")
+        
+        # Create temporary session for this request (no proxy needed)
+        async with aiohttp.ClientSession() as temp_session:
+            async with temp_session.get(url, params=params) as response:
+                response.raise_for_status()
+                data = await response.json()
+                
+                if isinstance(data, dict):
+                    code = data.get("code")
+                    if code is not None and code != 200:
+                        msg = data.get("msg", "")
+                        raise RuntimeError(
+                            f"Locations API error ({endpoint}): code={code}, msg={msg}"
+                        )
+                    return data.get("data") or []
+                
+                if isinstance(data, list):
+                    return data
+                
+                return []
 
-        async with session.post(
-            self.SCRAPER_DOWNLOAD_URL, data=payload, headers=headers
-        ) as response:
-            data = await response.json()
-            code = data.get("code")
+    # =========================================================================
+    # Helper Methods
+    # =========================================================================
 
-            if code == 200 and data.get("data"):
-                return data["data"]["download"]
-
-            msg = f"Result Error: {data}"
-            if code in (401, 403):
-                raise ThordataAuthError(msg, code=code, payload=data)
-            if code in (402, 429):
-                raise ThordataRateLimitError(msg, code=code, payload=data)
-            raise ThordataAPIError(msg, code=code, payload=data)
+    def _require_public_credentials(self) -> None:
+        """Ensure public API credentials are available."""
+        if not self.public_token or not self.public_key:
+            raise ThordataConfigError(
+                "public_token and public_key are required for this operation. "
+                "Please provide them when initializing AsyncThordataClient."
+            )

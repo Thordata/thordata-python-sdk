@@ -1,26 +1,138 @@
-# src/thordata/__init__.py
+"""
+Thordata Python SDK
 
+Official Python client for Thordata's Proxy Network, SERP API,
+Universal Scraping API (Web Unlocker), and Web Scraper API.
+
+Basic Usage:
+    >>> from thordata import ThordataClient
+    >>> 
+    >>> client = ThordataClient(
+    ...     scraper_token="your_token",
+    ...     public_token="your_public_token",
+    ...     public_key="your_public_key"
+    ... )
+    >>> 
+    >>> # Proxy request
+    >>> response = client.get("https://httpbin.org/ip")
+    >>> 
+    >>> # SERP search
+    >>> results = client.serp_search("python tutorial", engine="google")
+    >>> 
+    >>> # Universal scrape
+    >>> html = client.universal_scrape("https://example.com", js_render=True)
+
+Async Usage:
+    >>> from thordata import AsyncThordataClient
+    >>> import asyncio
+    >>> 
+    >>> async def main():
+    ...     async with AsyncThordataClient(
+    ...         scraper_token="your_token"
+    ...     ) as client:
+    ...         response = await client.get("https://httpbin.org/ip")
+    >>> 
+    >>> asyncio.run(main())
+"""
+
+__version__ = "0.4.0"
+__author__ = "Thordata Developer Team"
+__email__ = "support@thordata.com"
+
+# Main clients
 from .client import ThordataClient
 from .async_client import AsyncThordataClient
-from .enums import Engine, GoogleSearchType
+
+# Enums
+from .enums import (
+    Engine,
+    GoogleSearchType,
+    BingSearchType,
+    ProxyType,
+    SessionType,
+    Continent,
+    Country,
+    OutputFormat,
+    DataFormat,
+    TaskStatus,
+    Device,
+    TimeRange,
+    ProxyHost,
+    ProxyPort,
+)
+
+# Models
+from .models import (
+    ProxyConfig,
+    ProxyProduct,
+    StickySession,
+    SerpRequest,
+    UniversalScrapeRequest,
+    ScraperTaskConfig,
+    TaskStatusResponse,
+)
+
+# Exceptions
 from .exceptions import (
     ThordataError,
+    ThordataConfigError,
+    ThordataNetworkError,
+    ThordataTimeoutError,
     ThordataAPIError,
     ThordataAuthError,
     ThordataRateLimitError,
+    ThordataServerError,
+    ThordataValidationError,
 )
 
-# Package version
-__version__ = "0.3.1"
+# Retry utilities
+from .retry import RetryConfig
 
-# Explicitly export classes to simplify user imports
+# Public API
 __all__ = [
+    # Version
+    "__version__",
+    
+    # Clients
     "ThordataClient",
     "AsyncThordataClient",
+    
+    # Enums
     "Engine",
+    "GoogleSearchType",
+    "BingSearchType",
+    "ProxyType",
+    "SessionType",
+    "Continent",
+    "Country",
+    "OutputFormat",
+    "DataFormat",
+    "TaskStatus",
+    "Device",
+    "TimeRange",
+    "ProxyHost",
+    "ProxyPort",
+    
+    # Models
+    "ProxyConfig",
+    "ProxyProduct",
+    "StickySession",
+    "SerpRequest",
+    "UniversalScrapeRequest",
+    "ScraperTaskConfig",
+    "TaskStatusResponse",
+    
+    # Exceptions
     "ThordataError",
+    "ThordataConfigError",
+    "ThordataNetworkError",
+    "ThordataTimeoutError",
     "ThordataAPIError",
     "ThordataAuthError",
     "ThordataRateLimitError",
-    "GoogleSearchType"
+    "ThordataServerError",
+    "ThordataValidationError",
+    
+    # Retry
+    "RetryConfig",
 ]

@@ -1,0 +1,698 @@
+"""
+Data models for the Thordata Python SDK.
+
+This module provides type-safe dataclasses for configuring proxy requests,
+SERP API calls, and Universal Scraping requests. Using these models enables
+IDE autocomplete and reduces parameter errors.
+
+Example:
+    >>> from thordata.models import ProxyConfig, SerpRequest
+    >>> 
+    >>> # Build a proxy URL with geo-targeting
+    >>> proxy = ProxyConfig(
+    ...     username="myuser",
+    ...     password="mypass", 
+    ...     country="us",
+    ...     city="seattle"
+    ... )
+    >>> print(proxy.build_proxy_url())
+    
+    >>> # Configure a SERP request
+    >>> serp = SerpRequest(query="python tutorial", engine="google", num=20)
+    >>> print(serp.to_payload())
+"""
+
+from __future__ import annotations
+
+import re
+import uuid
+import json
+from dataclasses import dataclass, field
+from typing import Optional, Dict, Any, List, Union
+from enum import Enum
+
+
+# =============================================================================
+# Proxy Product Types
+# =============================================================================
+
+class ProxyProduct(str, Enum):
+    """
+    Thordata proxy product types with their default ports.
+    
+    Each product type has a specific port on the proxy gateway.
+    """
+    RESIDENTIAL = "residential"
+    MOBILE = "mobile"
+    DATACENTER = "datacenter"
+    ISP = "isp"
+    
+    @property
+    def default_port(self) -> int:
+        """Get the default port for this proxy product."""
+        ports = {
+            "residential": 9999,
+            "mobile": 5555,
+            "datacenter": 7777,
+            "isp": 6666,
+        }
+        return ports[self.value]
+
+
+# =============================================================================
+# Proxy Configuration Models
+# =============================================================================
+
+@dataclass
+class ProxyConfig:
+    """
+    Configuration for building a Thordata proxy URL.
+    
+    This class handles the complex username format required by Thordata proxies,
+    where geo-targeting and session parameters are embedded in the username.
+    
+    Args:
+        username: Your Thordata account username (the part after 'td-customer-').
+        password: Your Thordata account password.
+        product: Proxy product type (residential, mobile, datacenter, isp).
+        host: Proxy gateway host. If None, uses default based on product.
+        port: Proxy gateway port. If None, uses default based on product.
+        protocol: Proxy protocol - 'http' or 'https'.
+        
+        # Geo-targeting (all optional)
+        continent: Target continent code (af/an/as/eu/na/oc/sa).
+        country: Target country code in ISO 3166-1 alpha-2 format.
+        state: Target state name in lowercase.
+        city: Target city name in lowercase.
+        asn: Target ASN code (e.g., 'AS12322'). Must be used with country.
+        
+        # Session control (optional)
+        session_id: Session identifier for sticky sessions.
+        session_duration: Session duration in minutes (1-90).
+    
+    Example:
+        >>> config = ProxyConfig(
+        ...     username="GnrqUwwu3obt",
+        ...     password="PkCSzvt30iww",
+        ...     product=ProxyProduct.RESIDENTIAL,
+        ...     country="us",
+        ...     state="california",
+        ...     session_id="mysession123",
+        ...     session_duration=10
+        ... )
+        >>> print(config.build_proxy_url())
+        http://td-customer-GnrqUwwu3obt-country-us-state-california-sessid-mysession123-sesstime-10:PkCSzvt30iww@....pr.thordata.net:9999
+    """
+    
+    username: str
+    password: str
+    product: Union[ProxyProduct, str] = ProxyProduct.RESIDENTIAL
+    host: Optional[str] = None
+    port: Optional[int] = None
+    protocol: str = "http"
+    
+    # Geo-targeting
+    continent: Optional[str] = None
+    country: Optional[str] = None
+    state: Optional[str] = None
+    city: Optional[str] = None
+    asn: Optional[str] = None
+    
+    # Session control
+    session_id: Optional[str] = None
+    session_duration: Optional[int] = None  # minutes, 1-90
+    
+    # Valid continent codes
+    VALID_CONTINENTS = {"af", "an", "as", "eu", "na", "oc", "sa"}
+    
+    def __post_init__(self) -> None:
+        """Validate configuration after initialization."""
+        # Normalize product to enum
+        if isinstance(self.product, str):
+            self.product = ProxyProduct(self.product.lower())
+        
+        # Set default host and port based on product
+        if self.host is None:
+            # Extract user prefix from username if available
+            # Default to generic host
+            self.host = "pr.thordata.net"
+        
+        if self.port is None:
+            self.port = self.product.default_port
+        
+        self._validate()
+    
+    def _validate(self) -> None:
+        """Validate the proxy configuration."""
+        # Validate protocol
+        if self.protocol not in ("http", "https"):
+            raise ValueError(
+                f"Invalid protocol: {self.protocol}. Must be 'http' or 'https'."
+            )
+        
+        # Validate session duration
+        if self.session_duration is not None:
+            if not 1 <= self.session_duration <= 90:
+                raise ValueError(
+                    f"session_duration must be between 1 and 90 minutes, "
+                    f"got {self.session_duration}"
+                )
+            if not self.session_id:
+                raise ValueError("session_duration requires session_id to be set")
+        
+        # Validate ASN requires country
+        if self.asn and not self.country:
+            raise ValueError("ASN targeting requires country to be specified")
+        
+        # Validate continent code
+        if self.continent and self.continent.lower() not in self.VALID_CONTINENTS:
+            raise ValueError(
+                f"Invalid continent code: {self.continent}. "
+                f"Must be one of: {', '.join(sorted(self.VALID_CONTINENTS))}"
+            )
+        
+        # Validate country code format (2 letters)
+        if self.country and not re.match(r"^[a-zA-Z]{2}$", self.country):
+            raise ValueError(
+                f"Invalid country code: {self.country}. "
+                "Must be a 2-letter ISO 3166-1 alpha-2 code."
+            )
+    
+    def build_username(self) -> str:
+        """
+        Build the complete username string with embedded parameters.
+        
+        Returns:
+            The formatted username string for proxy authentication.
+        """
+        parts = [f"td-customer-{self.username}"]
+        
+        # Add geo-targeting parameters (order matters)
+        if self.continent:
+            parts.append(f"continent-{self.continent.lower()}")
+        
+        if self.country:
+            parts.append(f"country-{self.country.lower()}")
+        
+        if self.state:
+            parts.append(f"state-{self.state.lower()}")
+        
+        if self.city:
+            parts.append(f"city-{self.city.lower()}")
+        
+        if self.asn:
+            # Ensure ASN has correct format
+            asn_value = self.asn.upper()
+            if not asn_value.startswith("AS"):
+                asn_value = f"AS{asn_value}"
+            parts.append(f"asn-{asn_value}")
+        
+        # Add session parameters
+        if self.session_id:
+            parts.append(f"sessid-{self.session_id}")
+        
+        if self.session_duration:
+            parts.append(f"sesstime-{self.session_duration}")
+        
+        return "-".join(parts)
+    
+    def build_proxy_url(self) -> str:
+        """
+        Build the complete proxy URL.
+        
+        Returns:
+            The formatted proxy URL for use with requests/aiohttp.
+        """
+        username = self.build_username()
+        return f"{self.protocol}://{username}:{self.password}@{self.host}:{self.port}"
+    
+    def to_proxies_dict(self) -> Dict[str, str]:
+        """
+        Build a proxies dict suitable for the requests library.
+        
+        Returns:
+            Dict with 'http' and 'https' keys pointing to the proxy URL.
+        """
+        url = self.build_proxy_url()
+        return {"http": url, "https": url}
+    
+    def to_aiohttp_config(self) -> tuple:
+        """
+        Get proxy configuration for aiohttp.
+        
+        Returns:
+            Tuple of (proxy_url, proxy_auth) for aiohttp.
+        """
+        try:
+            import aiohttp
+            proxy_url = f"{self.protocol}://{self.host}:{self.port}"
+            proxy_auth = aiohttp.BasicAuth(
+                login=self.build_username(),
+                password=self.password
+            )
+            return proxy_url, proxy_auth
+        except ImportError:
+            raise ImportError("aiohttp is required for async proxy configuration")
+
+
+@dataclass
+class StickySession(ProxyConfig):
+    """
+    Convenience class for creating sticky session proxy configurations.
+    
+    A sticky session keeps the same IP address for a specified duration,
+    useful for multi-step operations that require IP consistency.
+    
+    Args:
+        duration_minutes: How long to keep the same IP (1-90 minutes).
+        auto_session_id: If True, automatically generates a unique session ID.
+        
+    Example:
+        >>> session = StickySession(
+        ...     username="myuser",
+        ...     password="mypass",
+        ...     country="us",
+        ...     duration_minutes=15
+        ... )
+        >>> # Each call to build_proxy_url() uses the same session
+        >>> url = session.build_proxy_url()
+    """
+    
+    duration_minutes: int = 10
+    auto_session_id: bool = True
+    
+    def __post_init__(self) -> None:
+        # Auto-generate session ID if requested and not provided
+        if self.auto_session_id and not self.session_id:
+            self.session_id = uuid.uuid4().hex[:12]
+        
+        # Set session_duration from duration_minutes
+        self.session_duration = self.duration_minutes
+        
+        # Call parent post_init
+        super().__post_init__()
+
+
+# =============================================================================
+# SERP API Models
+# =============================================================================
+
+@dataclass
+class SerpRequest:
+    """
+    Configuration for a SERP API request.
+    
+    Supports Google, Bing, Yandex, DuckDuckGo, and Baidu search engines.
+    
+    Args:
+        query: The search query string (required).
+        engine: Search engine to use (default: 'google').
+        num: Number of results per page (default: 10).
+        start: Result offset for pagination (default: 0).
+        
+        # Localization
+        country: Country code for results (gl parameter for Google).
+        language: Language code for interface (hl parameter for Google).
+        google_domain: Google domain to use (e.g., 'google.co.uk').
+        
+        # Geo-targeting
+        location: Location name for geo-targeting.
+        uule: Encoded location parameter (use with location).
+        
+        # Search type
+        search_type: Type of search (images, news, shopping, videos, etc.).
+        
+        # Filters
+        safe_search: Enable safe search filtering.
+        time_filter: Time range filter (hour, day, week, month, year).
+        
+        # Advanced
+        device: Device type (desktop, mobile, tablet).
+        extra_params: Additional parameters to pass through.
+    
+    Example:
+        >>> req = SerpRequest(
+        ...     query="python programming",
+        ...     engine="google",
+        ...     num=20,
+        ...     country="us",
+        ...     language="en",
+        ...     search_type="news"
+        ... )
+        >>> payload = req.to_payload()
+    """
+    
+    query: str
+    engine: str = "google"
+    num: int = 10
+    start: int = 0
+    
+    # Localization
+    country: Optional[str] = None  # 'gl' for Google
+    language: Optional[str] = None  # 'hl' for Google
+    google_domain: Optional[str] = None
+    countries_filter: Optional[str] = None  # 'cr' parameter
+    languages_filter: Optional[str] = None  # 'lr' parameter
+    
+    # Geo-targeting
+    location: Optional[str] = None
+    uule: Optional[str] = None  # Encoded location
+    
+    # Search type
+    search_type: Optional[str] = None  # tbm parameter (isch, shop, nws, vid)
+    
+    # Filters
+    safe_search: Optional[bool] = None
+    time_filter: Optional[str] = None  # tbs parameter
+    no_autocorrect: bool = False  # nfpr parameter
+    filter_duplicates: Optional[bool] = None
+    
+    # Advanced
+    device: Optional[str] = None
+    
+    # Advanced Google parameters
+    ludocid: Optional[str] = None  # Google Place ID
+    kgmid: Optional[str] = None  # Knowledge Graph ID
+    
+    # Pass-through
+    extra_params: Dict[str, Any] = field(default_factory=dict)
+    
+    # Search type mappings for tbm parameter
+    SEARCH_TYPE_MAP = {
+        "images": "isch",
+        "shopping": "shop",
+        "news": "nws",
+        "videos": "vid",
+        # Direct values also work
+        "isch": "isch",
+        "shop": "shop",
+        "nws": "nws",
+        "vid": "vid",
+    }
+    
+    # Time filter mappings for tbs parameter
+    TIME_FILTER_MAP = {
+        "hour": "qdr:h",
+        "day": "qdr:d",
+        "week": "qdr:w",
+        "month": "qdr:m",
+        "year": "qdr:y",
+    }
+    
+    # Engine URL defaults
+    ENGINE_URLS = {
+        "google": "google.com",
+        "bing": "bing.com",
+        "yandex": "yandex.com",
+        "duckduckgo": "duckduckgo.com",
+        "baidu": "baidu.com",
+    }
+    
+    def to_payload(self) -> Dict[str, Any]:
+        """
+        Convert to API request payload.
+        
+        Returns:
+            Dictionary ready to be sent to the SERP API.
+        """
+        engine = self.engine.lower()
+        
+        payload: Dict[str, Any] = {
+            "engine": engine,
+            "num": str(self.num),
+            "json": "1",
+        }
+        
+        # Handle query parameter (Yandex uses 'text', others use 'q')
+        if engine == "yandex":
+            payload["text"] = self.query
+        else:
+            payload["q"] = self.query
+        
+        # Set URL based on google_domain or engine default
+        if self.google_domain:
+            payload["url"] = self.google_domain
+        elif engine in self.ENGINE_URLS:
+            payload["url"] = self.ENGINE_URLS[engine]
+        
+        # Pagination
+        if self.start > 0:
+            payload["start"] = str(self.start)
+        
+        # Localization
+        if self.country:
+            payload["gl"] = self.country.lower()
+        
+        if self.language:
+            payload["hl"] = self.language.lower()
+        
+        if self.countries_filter:
+            payload["cr"] = self.countries_filter
+        
+        if self.languages_filter:
+            payload["lr"] = self.languages_filter
+        
+        # Geo-targeting
+        if self.location:
+            payload["location"] = self.location
+        
+        if self.uule:
+            payload["uule"] = self.uule
+        
+        # Search type
+        if self.search_type:
+            search_type_lower = self.search_type.lower()
+            tbm_value = self.SEARCH_TYPE_MAP.get(search_type_lower, search_type_lower)
+            payload["tbm"] = tbm_value
+        
+        # Filters
+        if self.safe_search is not None:
+            payload["safe"] = "active" if self.safe_search else "off"
+        
+        if self.time_filter:
+            time_lower = self.time_filter.lower()
+            tbs_value = self.TIME_FILTER_MAP.get(time_lower, time_lower)
+            payload["tbs"] = tbs_value
+        
+        if self.no_autocorrect:
+            payload["nfpr"] = "1"
+        
+        if self.filter_duplicates is not None:
+            payload["filter"] = "1" if self.filter_duplicates else "0"
+        
+        # Device
+        if self.device:
+            payload["device"] = self.device.lower()
+        
+        # Advanced Google parameters
+        if self.ludocid:
+            payload["ludocid"] = self.ludocid
+        
+        if self.kgmid:
+            payload["kgmid"] = self.kgmid
+        
+        # Extra parameters
+        payload.update(self.extra_params)
+        
+        return payload
+
+
+# =============================================================================
+# Universal Scraper (Web Unlocker) Models
+# =============================================================================
+
+@dataclass
+class UniversalScrapeRequest:
+    """
+    Configuration for a Universal Scraping API (Web Unlocker) request.
+    
+    This API bypasses anti-bot protections like Cloudflare, CAPTCHAs, etc.
+    
+    Args:
+        url: Target URL to scrape (required).
+        js_render: Enable JavaScript rendering with headless browser.
+        output_format: Output format - 'html' or 'png' (screenshot).
+        country: Country code for geo-targeting the request.
+        block_resources: Block specific resources (e.g., 'script', 'image').
+        clean_content: Remove JS/CSS from returned content (e.g., 'js,css').
+        wait: Wait time in milliseconds after page load (max 100000).
+        wait_for: CSS selector to wait for before returning.
+        headers: Custom request headers as list of {name, value} dicts.
+        cookies: Custom cookies as list of {name, value} dicts.
+        extra_params: Additional parameters to pass through.
+    
+    Example:
+        >>> req = UniversalScrapeRequest(
+        ...     url="https://example.com",
+        ...     js_render=True,
+        ...     output_format="html",
+        ...     country="us",
+        ...     wait=5000,
+        ...     wait_for=".content"
+        ... )
+        >>> payload = req.to_payload()
+    """
+    
+    url: str
+    js_render: bool = False
+    output_format: str = "html"  # 'html' or 'png'
+    country: Optional[str] = None
+    block_resources: Optional[str] = None  # e.g., 'script', 'image', 'script,image'
+    clean_content: Optional[str] = None  # e.g., 'js', 'css', 'js,css'
+    wait: Optional[int] = None  # Milliseconds, max 100000
+    wait_for: Optional[str] = None  # CSS selector
+    headers: Optional[List[Dict[str, str]]] = None  # [{"name": "...", "value": "..."}]
+    cookies: Optional[List[Dict[str, str]]] = None  # [{"name": "...", "value": "..."}]
+    extra_params: Dict[str, Any] = field(default_factory=dict)  # 这个必须用 field()
+    
+    def __post_init__(self) -> None:
+        """Validate configuration."""
+        valid_formats = {"html", "png"}
+        if self.output_format.lower() not in valid_formats:
+            raise ValueError(
+                f"Invalid output_format: {self.output_format}. "
+                f"Must be one of: {', '.join(valid_formats)}"
+            )
+        
+        if self.wait is not None and (self.wait < 0 or self.wait > 100000):
+            raise ValueError(
+                f"wait must be between 0 and 100000 milliseconds, got {self.wait}"
+            )
+    
+    def to_payload(self) -> Dict[str, Any]:
+        """
+        Convert to API request payload.
+        
+        Returns:
+            Dictionary ready to be sent to the Universal API.
+        """
+        payload: Dict[str, Any] = {
+            "url": self.url,
+            "js_render": "True" if self.js_render else "False",
+            "type": self.output_format.lower(),
+        }
+        
+        if self.country:
+            payload["country"] = self.country.lower()
+        
+        if self.block_resources:
+            payload["block_resources"] = self.block_resources
+        
+        if self.clean_content:
+            payload["clean_content"] = self.clean_content
+        
+        if self.wait is not None:
+            payload["wait"] = str(self.wait)
+        
+        if self.wait_for:
+            payload["wait_for"] = self.wait_for
+        
+        if self.headers:
+            payload["headers"] = json.dumps(self.headers)
+        
+        if self.cookies:
+            payload["cookies"] = json.dumps(self.cookies)
+        
+        payload.update(self.extra_params)
+        
+        return payload
+
+
+# =============================================================================
+# Web Scraper Task Models
+# =============================================================================
+
+@dataclass
+class ScraperTaskConfig:
+    """
+    Configuration for creating a Web Scraper API task.
+    
+    Note: You must get spider_id and spider_name from the Thordata Dashboard.
+    
+    Args:
+        file_name: Name for the output file.
+        spider_id: Spider identifier from Dashboard.
+        spider_name: Spider name (usually the target domain).
+        parameters: Spider-specific parameters.
+        universal_params: Global spider settings.
+        include_errors: Include error details in output.
+    
+    Example:
+        >>> config = ScraperTaskConfig(
+        ...     file_name="youtube_data",
+        ...     spider_id="youtube_video-post_by-url",
+        ...     spider_name="youtube.com",
+        ...     parameters={
+        ...         "url": "https://youtube.com/@channel/videos",
+        ...         "num_of_posts": "50"
+        ...     }
+        ... )
+        >>> payload = config.to_payload()
+    """
+    
+    file_name: str
+    spider_id: str
+    spider_name: str
+    parameters: Dict[str, Any]
+    universal_params: Optional[Dict[str, Any]] = None
+    include_errors: bool = True
+    
+    def to_payload(self) -> Dict[str, Any]:
+        """
+        Convert to API request payload.
+        
+        Returns:
+            Dictionary ready to be sent to the Web Scraper API.
+        """
+        payload: Dict[str, Any] = {
+            "file_name": self.file_name,
+            "spider_id": self.spider_id,
+            "spider_name": self.spider_name,
+            "spider_parameters": json.dumps([self.parameters]),
+            "spider_errors": "true" if self.include_errors else "false",
+        }
+        
+        if self.universal_params:
+            payload["spider_universal"] = json.dumps(self.universal_params)
+        
+        return payload
+
+
+# =============================================================================
+# Response Models
+# =============================================================================
+
+@dataclass
+class TaskStatusResponse:
+    """
+    Response from task status check.
+    
+    Attributes:
+        task_id: The task identifier.
+        status: Current task status.
+        progress: Optional progress percentage.
+        message: Optional status message.
+    """
+    
+    task_id: str
+    status: str
+    progress: Optional[int] = None
+    message: Optional[str] = None
+    
+    def is_complete(self) -> bool:
+        """Check if the task has completed (success or failure)."""
+        terminal_statuses = {
+            "ready", "success", "finished",
+            "failed", "error", "cancelled"
+        }
+        return self.status.lower() in terminal_statuses
+    
+    def is_success(self) -> bool:
+        """Check if the task completed successfully."""
+        success_statuses = {"ready", "success", "finished"}
+        return self.status.lower() in success_statuses
+    
+    def is_failed(self) -> bool:
+        """Check if the task failed."""
+        failure_statuses = {"failed", "error"}
+        return self.status.lower() in failure_statuses
