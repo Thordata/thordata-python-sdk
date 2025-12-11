@@ -138,7 +138,7 @@ class RetryConfig:
 def with_retry(
     config: Optional[RetryConfig] = None,
     on_retry: Optional[Callable[[int, Exception, float], None]] = None,
-) -> Callable[[Callable[..., T]], Callable[..., T]]:
+) -> Callable:
     """
     Decorator to add retry logic to a function.
 
@@ -163,9 +163,9 @@ def with_retry(
     if config is None:
         config = RetryConfig()
 
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+    def decorator(func: Callable) -> Callable:
         @wraps(func)
-        def sync_wrapper(*args: Any, **kwargs: Any) -> T:
+        def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             last_exception: Optional[Exception] = None
 
             for attempt in range(config.max_retries + 1):
@@ -174,7 +174,6 @@ def with_retry(
                 except Exception as e:
                     last_exception = e
 
-                    # Extract status code if available
                     status_code = _extract_status_code(e)
 
                     if not config.should_retry(e, attempt, status_code):
@@ -182,7 +181,6 @@ def with_retry(
 
                     delay = config.calculate_delay(attempt)
 
-                    # Handle rate limit retry_after
                     if isinstance(e, ThordataRateLimitError) and e.retry_after:
                         delay = max(delay, e.retry_after)
 
@@ -196,8 +194,9 @@ def with_retry(
 
                     time.sleep(delay)
 
-            # Should not reach here, but just in case
-            raise last_exception  # type: ignore
+            if last_exception:
+                raise last_exception
+            raise RuntimeError("Unexpected retry loop exit")
 
         @wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -239,7 +238,7 @@ def with_retry(
         import asyncio
 
         if asyncio.iscoroutinefunction(func):
-            return async_wrapper  # type: ignore
+            return async_wrapper
         return sync_wrapper
 
     return decorator
