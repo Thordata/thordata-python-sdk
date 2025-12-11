@@ -7,7 +7,7 @@ name = "thordata-sdk"
 version = "0.4.0"  # 版本号建议升级，因为有较大结构变化
 description = "The Official Python SDK for Thordata - AI Data Infrastructure & Proxy Network."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
   {name = "Thordata Developer Team", email = "support@thordata.com"}
@@ -32,7 +32,6 @@ classifiers = [
     "Topic :: Internet :: WWW/HTTP",
     "Topic :: Internet :: Proxy Servers",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -102,7 +101,7 @@ known-first-party = ["thordata"]
 
 # Mypy 类型检查配置
 [tool.mypy]
-python_version >= "3.8"
+python_version = "3.9"
 warn_return_any = false
 warn_unused_ignores = false
 disallow_untyped_defs = false
@@ -111,7 +110,6 @@ check_untyped_defs = false
 strict_optional = false
 show_error_codes = true
 ignore_missing_imports = true
-disable_error_code = ["attr-defined", "misc", "exit-return", "return"]
 
 [[tool.mypy.overrides]]
 module = ["aiohttp.*", "requests.*"]
