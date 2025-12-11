@@ -609,9 +609,8 @@ class ThordataClient:
         self._require_public_credentials()
 
         headers = build_public_api_headers(
-            self.public_token or "",
-            self.public_key or ""
-            )
+            self.public_token or "", self.public_key or ""
+        )
         payload = {"tasks_ids": task_id}
 
         try:
@@ -636,19 +635,14 @@ class ThordataClient:
             logger.error(f"Status check failed: {e}")
             return "error"
 
-    def get_task_result(
-        self,
-        task_id: str,
-        file_type: str = "json"
-    ) -> str:
+    def get_task_result(self, task_id: str, file_type: str = "json") -> str:
         """
         Get the download URL for a completed task.
         """
         self._require_public_credentials()
 
         headers = build_public_api_headers(
-            self.public_token or "",
-            self.public_key or ""
+            self.public_token or "", self.public_key or ""
         )
         payload = {"tasks_id": task_id, "type": file_type}
 
@@ -670,19 +664,12 @@ class ThordataClient:
                 return data["data"]["download"]
 
             msg = extract_error_message(data)
-            raise_for_code(
-                f"Get result failed: {msg}",
-                code=code,
-                payload=data
-            )
+            raise_for_code(f"Get result failed: {msg}", code=code, payload=data)
             # This line won't be reached, but satisfies mypy
             raise RuntimeError("Unexpected state")
 
         except requests.RequestException as e:
-            raise ThordataNetworkError(
-                f"Get result failed: {e}",
-                original_error=e
-            )
+            raise ThordataNetworkError(f"Get result failed: {e}", original_error=e)
 
     def wait_for_task(
         self,

@@ -479,8 +479,7 @@ class AsyncThordataClient:
         session = self._get_session()
 
         headers = build_public_api_headers(
-            self.public_token or "",
-            self.public_key or ""
+            self.public_token or "", self.public_key or ""
         )
         payload = {"tasks_ids": task_id}
 
@@ -501,11 +500,7 @@ class AsyncThordataClient:
             logger.error(f"Async status check failed: {e}")
             return "error"
 
-    async def get_task_result(
-        self,
-        task_id: str,
-        file_type: str = "json"
-    ) -> str:
+    async def get_task_result(self, task_id: str, file_type: str = "json") -> str:
         """
         Get download URL for completed task.
         """
@@ -513,8 +508,7 @@ class AsyncThordataClient:
         session = self._get_session()
 
         headers = build_public_api_headers(
-            self.public_token or "",
-            self.public_key or ""
+            self.public_token or "", self.public_key or ""
         )
         payload = {"tasks_id": task_id, "type": file_type}
 
@@ -522,9 +516,7 @@ class AsyncThordataClient:
 
         try:
             async with session.post(
-                self._download_url,
-                data=payload,
-                headers=headers
+                self._download_url, data=payload, headers=headers
             ) as response:
                 data = await response.json()
                 code = data.get("code")
@@ -533,20 +525,12 @@ class AsyncThordataClient:
                     return data["data"]["download"]
 
                 msg = extract_error_message(data)
-                raise_for_code(
-                    f"Get result failed: {msg}",
-                    code=code,
-                    payload=data
-                )
+                raise_for_code(f"Get result failed: {msg}", code=code, payload=data)
                 # This line won't be reached, but satisfies mypy
                 raise RuntimeError("Unexpected state")
 
         except aiohttp.ClientError as e:
-            raise ThordataNetworkError(
-                f"Get result failed: {e}",
-                original_error=e
-            )
-
+            raise ThordataNetworkError(f"Get result failed: {e}", original_error=e)
 
     async def wait_for_task(
         self,
