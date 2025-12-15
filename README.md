@@ -208,6 +208,28 @@ for result in results.get("organic", []):
     print(f"{result['title']}: {result['link']}")
 ```
 
+#### General Calling Method
+
+```python
+from thordata import ThordataClient, Engine
+
+client = ThordataClient(scraper_token="YOUR_SCRAPER_TOKEN")
+
+results = client.serp_search(
+    query="pizza",
+    engine=Engine.GOOGLE,      # or "google"
+    num=10,
+    country="us",
+    language="en",
+    search_type="news",       # corresponds to tbm=nws
+    # Other parameters are passed in via kwargs
+    ibp="some_ibp_value",
+    lsig="some_lsig_value",
+)
+```
+
+**Note**: All parameters above will be assembled into Thordata SERP API request parameters.
+
 #### Advanced Search Options
 
 ```python
@@ -251,7 +273,200 @@ yandex_results = client.serp_search("AI news", engine=Engine.YANDEX)
 ddg_results = client.serp_search("AI news", engine=Engine.DUCKDUCKGO)
 ```
 
-### 3. Web Unlocker (Universal Scraping API)
+---
+
+## 🔧 SERP API Parameter Mapping
+
+Thordata's SERP API supports multiple search engines and sub-features (Google Search/Shopping/News, etc.).  
+This SDK wraps common parameters through `ThordataClient.serp_search` and `SerpRequest`, while other parameters can be passed directly through `**kwargs`.
+
+### Google Search Parameter Mapping
+
+| Document Parameter | SDK Field/Usage | Description |
+|-------------------|-----------------|-------------|
+| q | query | Search keyword |
+| engine | engine | Engine.GOOGLE / "google" |
+| google_domain | google_domain | e.g., "google.co.uk" |
+| gl | country | Country/region, e.g., "us" |
+| hl | language | Language, e.g., "en", "zh-CN" |
+| cr | countries_filter | Multi-country filter, e.g., "countryFR |
+| lr | languages_filter | Multi-language filter, e.g., "lang_en |
+| location | location | Exact location, e.g., "India" |
+| uule | uule | Base64 encoded location string |
+| tbm | search_type | "images"→tbm=isch, "shopping"→tbm=shop, "news"→tbm=nws, "videos"→tbm=vid, other values passed through as-is |
+| start | start | Result offset for pagination |
+| num | num | Number of results per page |
+| ludocid | ludocid | Google Place ID |
+| kgmid | kgmid | Google Knowledge Graph ID |
+| ibp | ibp="..." (kwargs) | Passed through **kwargs |
+| lsig | lsig="..." (kwargs) | Same as above |
+| si | si="..." (kwargs) | Same as above |
+| uds | uds="ADV" (kwargs) | Same as above |
+| tbs | time_filter or tbs="..." | time_filter="week" generates tbs=qdr:w, can also pass complete tbs directly |
+| safe | safe_search | True → safe=active, False → safe=off |
+| nfpr | no_autocorrect | True → nfpr=1 |
+| filter | filter_duplicates | True → filter=1, False → filter=0 |
+
+**Example: Google Search Basic Usage**
+
+```python
+results = client.serp_search(
+    query="python web scraping best practices",
+    engine=Engine.GOOGLE,
+    country="us",
+    language="en",
+    num=10,
+    time_filter="week",      # Last week
+    safe_search=True,        # Adult content filter
+)
+```
+
+### Google Shopping Parameter Mapping
+
+Shopping still uses engine="google", search_type="shopping" to select Shopping mode:
+
+```python
+results = client.serp_search(
+    query="iPhone 15",
+    engine=Engine.GOOGLE,
+    search_type="shopping",   # tbm=shop
+    country="us",
+    language="en",
+    num=20,
+    min_price=500,            # Parameters below passed through kwargs
+    max_price=1500,
+    sort_by=1,                # 1=price low to high, 2=high to low
+    free_shipping=True,
+    on_sale=True,
+    small_business=True,
+    direct_link=True,
+    shoprs="FILTER_ID_HERE",
+)
+shopping_items = results.get("shopping_results", [])
+```
+
+| Document Parameter | SDK Field/Usage | Description |
+|-------------------|-----------------|-------------|
+| q | query | Search keyword |
+| google_domain | google_domain | Same as above |
+| gl | country | Same as above |
+| hl | language | Same as above |
+| location | location | Same as above |
+| uule | uule | Same as above |
+| start | start | Offset |
+| num | num | Quantity |
+| tbs | time_filter or tbs="..." | Same as above |
+| shoprs | shoprs="..." (kwargs) | Filter ID |
+| min_price | min_price=... (kwargs) | Minimum price |
+| max_price | max_price=... (kwargs) | Maximum price |
+| sort_by | sort_by=1/2 (kwargs) | Sort order |
+| free_shipping | free_shipping=True/False (kwargs) | Free shipping |
+| on_sale | on_sale=True/False (kwargs) | On sale |
+| small_business | small_business=True/False (kwargs) | Small business |
+| direct_link | direct_link=True/False (kwargs) | Include direct links |
+
+### Google Local Parameter Mapping
+
+Google Local is mainly about location-based local searches.  
+In the SDK, you can use search_type="local" to mark Local mode (tbm passed through as "local"), combined with location + uule.
+
+```python
+results = client.serp_search(
+    query="pizza near me",
+    engine=Engine.GOOGLE,
+    search_type="local",
+    google_domain="google.com",
+    country="us",
+    language="en",
+    location="San Francisco",
+    uule="w+CAIQICIFU2FuIEZyYW5jaXNjbw",  # Example value
+    start=0,  # Local only accepts 0, 20, 40...
+)
+local_results = results.get("local_results", results.get("organic", []))
+```
+
+| Document Parameter | SDK Field/Usage | Description |
+|-------------------|-----------------|-------------|
+| q | query | Search term |
+| google_domain | google_domain | Domain |
+| gl | country | Country |
+| hl | language | Language |
+| location | location | Local location |
+| uule | uule | Encoded location |
+| start | start | Offset (must be 0,20,40...) |
+| ludocid | ludocid | Place ID (commonly used in Local results) |
+| tbs | time_filter or tbs="..." | Advanced filtering |
+
+### Google Videos Parameter Mapping
+
+```python
+results = client.serp_search(
+    query="python async tutorial",
+    engine=Engine.GOOGLE,
+    search_type="videos",   # tbm=vid
+    country="us",
+    language="en",
+    languages_filter="lang_en|lang_fr",
+    location="United States",
+    uule="ENCODED_LOCATION_HERE",
+    num=10,
+    time_filter="month",
+    safe_search=True,
+    filter_duplicates=True,
+)
+video_results = results.get("video_results", results.get("organic", []))
+```
+
+| Document Parameter | SDK Field/Usage | Description |
+|-------------------|-----------------|-------------|
+| q | query | Search term |
+| google_domain | google_domain | Domain |
+| gl | country | Country |
+| hl | language | Language |
+| lr | languages_filter | Multi-language filter |
+| location | location | Geographic location |
+| uule | uule | Encoded location |
+| start | start | Offset |
+| num | num | Quantity |
+| tbs | time_filter or tbs="..." | Time and advanced filtering |
+| safe | safe_search | Adult content filter |
+| nfpr | no_autocorrect | Disable auto-correction |
+| filter | filter_duplicates | Remove duplicates |
+
+### Google News Parameter Mapping
+
+Google News has a set of exclusive token parameters for precise control of "topics/media/sections/stories".
+
+```python
+results = client.serp_search(
+    query="AI regulation",
+    engine=Engine.GOOGLE,
+    search_type="news",           # tbm=nws
+    country="us",
+    language="en",
+    topic_token="YOUR_TOPIC_TOKEN",               # Optional
+    publication_token="YOUR_PUBLICATION_TOKEN",   # Optional
+    section_token="YOUR_SECTION_TOKEN",           # Optional
+    story_token="YOUR_STORY_TOKEN",               # Optional
+    so=1,   # 0=relevance, 1=time
+)
+news_results = results.get("news_results", results.get("organic", []))
+```
+
+| Document Parameter | SDK Field/Usage | Description |
+|-------------------|-----------------|-------------|
+| q | query | Search term |
+| gl | country | Country |
+| hl | language | Language |
+| topic_token | topic_token="..." (kwargs) | Topic token |
+| publication_token | publication_token="..." (kwargs) | Media token |
+| section_token | section_token="..." (kwargs) | Section token |
+| story_token | story_token="..." (kwargs) | Story token |
+| so | so=0/1 (kwargs) | Sort: 0=relevance, 1=time |
+
+---
+
+## 🔓 Web Unlocker (Universal Scraping API)
 
 Automatically bypass anti-bot protections:
 
@@ -316,7 +531,7 @@ with open("screenshot.png", "wb") as f:
     f.write(png_bytes)
 ```
 
-### 4. Web Scraper API (Async Tasks)
+### Web Scraper API (Async Tasks)
 
 For complex scraping jobs that run asynchronously:
 
@@ -351,7 +566,7 @@ if status in ("ready", "success"):
     print(f"Download: {download_url}")
 ```
 
-### 5. Async Client (High Concurrency)
+### Async Client (High Concurrency)
 
 For maximum performance with concurrent requests:
 
@@ -406,7 +621,7 @@ async def search_multiple():
 asyncio.run(search_multiple())
 ```
 
-### 6. Location APIs
+### Location APIs
 
 Discover available geo-targeting options:
 
@@ -438,7 +653,7 @@ for asn in asns[:5]:
     print(f"  {asn['asn_code']}: {asn['asn_name']}")
 ```
 
-### 7. Error Handling
+### Error Handling
 
 ```python
 from thordata import (
@@ -469,7 +684,7 @@ except ThordataError as e:
     print(f"General error: {e}")
 ```
 
-### 8. Retry Configuration
+### Retry Configuration
 
 Customize automatic retry behavior:
 
