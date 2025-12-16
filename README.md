@@ -466,6 +466,8 @@ news_results = results.get("news_results", results.get("organic", []))
 
 ---
 
+👉 For more SERP modes and parameter mappings, see docs/serp_reference.md.
+
 ## 🔓 Web Unlocker (Universal Scraping API)
 
 Automatically bypass anti-bot protections:
