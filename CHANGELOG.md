@@ -5,7 +5,16 @@ All notable changes to the Thordata Python SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.0] - 2024-12-11
+We recommend using venv and running python -m pip / python -m pytest to prevent conflicts with multiple interpreters.
+
+## 0.5.0 - 2025-12-17
+- Fixed: SERP methods now raise typed exceptions when the API returns a non-200 `code` in the JSON payload.
+- Added: `ThordataNotCollectedError` (code=300) and retry support for not-collected responses.
+- Improved: Separated proxy traffic and API traffic in the synchronous client to avoid routing Thordata API calls through the proxy gateway by default.
+- Added: Offline end-to-end CI test that executes `examples/demo_serp_api.py` against a local mock server.
+
+
+## [0.4.0] - 2025-12-11
 
 ### Added
 

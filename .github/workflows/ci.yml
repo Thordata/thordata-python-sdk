@@ -37,15 +37,19 @@ jobs:
 
       - name: Run linter (Ruff)
         run: |
-          ruff check src tests
+          ruff check src tests examples
 
       - name: Run formatter check (Black)
         run: |
-          black --check src tests
+          black --check src tests examples
 
       - name: Run type checker (MyPy)
         run: |
           mypy src --ignore-missing-imports
+
+      - name: Compile examples
+        run: |
+          python -m compileall examples
 
       - name: Run tests with coverage
         run: |

@@ -26,6 +26,7 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional, Union
 
+import os
 import aiohttp
 
 from ._utils import (
@@ -92,6 +93,10 @@ class AsyncThordataClient:
         proxy_port: int = 9999,
         timeout: int = 30,
         retry_config: Optional[RetryConfig] = None,
+        scraperapi_base_url: Optional[str] = None,
+        universalapi_base_url: Optional[str] = None,
+        web_scraper_api_base_url: Optional[str] = None,
+        locations_base_url: Optional[str] = None,
     ) -> None:
         """Initialize the Async Thordata Client."""
         if not scraper_token:
@@ -115,12 +120,37 @@ class AsyncThordataClient:
             login=f"td-customer-{scraper_token}", password=""
         )
 
-        # Store endpoint URLs
-        self._serp_url = f"{self.BASE_URL}/request"
-        self._universal_url = f"{self.UNIVERSAL_URL}/request"
-        self._builder_url = f"{self.BASE_URL}/builder"
-        self._status_url = f"{self.API_URL}/tasks-status"
-        self._download_url = f"{self.API_URL}/tasks-download"
+        # Base URLs (allow override via args or env vars for testing and custom routing)
+        scraperapi_base = (
+            scraperapi_base_url
+            or os.getenv("THORDATA_SCRAPERAPI_BASE_URL")
+            or self.BASE_URL
+        ).rstrip("/")
+
+        universalapi_base = (
+            universalapi_base_url
+            or os.getenv("THORDATA_UNIVERSALAPI_BASE_URL")
+            or self.UNIVERSAL_URL
+        ).rstrip("/")
+
+        web_scraper_api_base = (
+            web_scraper_api_base_url
+            or os.getenv("THORDATA_WEB_SCRAPER_API_BASE_URL")
+            or self.API_URL
+        ).rstrip("/")
+
+        locations_base = (
+            locations_base_url
+            or os.getenv("THORDATA_LOCATIONS_BASE_URL")
+            or self.LOCATIONS_URL
+        ).rstrip("/")
+
+        self._serp_url = f"{scraperapi_base}/request"
+        self._builder_url = f"{scraperapi_base}/builder"
+        self._universal_url = f"{universalapi_base}/request"
+        self._status_url = f"{web_scraper_api_base}/tasks-status"
+        self._download_url = f"{web_scraper_api_base}/tasks-download"
+        self._locations_base_url = locations_base
 
         # Session initialized lazily
         self._session: Optional[aiohttp.ClientSession] = None
@@ -305,6 +335,17 @@ class AsyncThordataClient:
 
                 if output_format.lower() == "json":
                     data = await response.json()
+
+                    if isinstance(data, dict):
+                        code = data.get("code")
+                        if code is not None and code != 200:
+                            msg = extract_error_message(data)
+                            raise_for_code(
+                                f"SERP API Error: {msg}",
+                                code=code,
+                                payload=data,
+                            )
+
                     return parse_json_response(data)
 
                 text = await response.text()
@@ -342,6 +383,17 @@ class AsyncThordataClient:
 
                 if request.output_format.lower() == "json":
                     data = await response.json()
+
+                    if isinstance(data, dict):
+                        code = data.get("code")
+                        if code is not None and code != 200:
+                            msg = extract_error_message(data)
+                            raise_for_code(
+                                f"SERP API Error: {msg}",
+                                code=code,
+                                payload=data,
+                            )
+
                     return parse_json_response(data)
 
                 text = await response.text()
@@ -679,12 +731,12 @@ class AsyncThordataClient:
         for key, value in kwargs.items():
             params[key] = str(value)
 
-        url = f"{self.LOCATIONS_URL}/{endpoint}"
+        url = f"{self._locations_base_url}/{endpoint}"
 
         logger.debug(f"Async Locations API: {url}")
 
         # Create temporary session for this request (no proxy needed)
-        async with aiohttp.ClientSession() as temp_session:
+        async with aiohttp.ClientSession(trust_env=True) as temp_session:
             async with temp_session.get(url, params=params) as response:
                 response.raise_for_status()
                 data = await response.json()

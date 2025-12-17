@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "thordata-sdk"
-version = "0.4.0"  # 版本号建议升级，因为有较大结构变化
+version = "0.5.0"
 description = "The Official Python SDK for Thordata - AI Data Infrastructure & Proxy Network."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -41,18 +41,18 @@ classifiers = [
     "Typing :: Typed",
 ]
 
-# 运行时依赖
 dependencies = [
     "requests>=2.25.0",
-    "aiohttp>=3.8.0",
+    "aiohttp>=3.9.0",
 ]
 
-# 可选依赖（开发/测试用）
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.0.0",
+    "pytest-httpserver>=1.0.0",
+    "python-dotenv>=1.0.0",
     "black>=23.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
@@ -66,23 +66,21 @@ dev = [
 "Tracker" = "https://github.com/Thordata/thordata-python-sdk/issues"
 "Changelog" = "https://github.com/Thordata/thordata-python-sdk/blob/main/CHANGELOG.md"
 
-# Setuptools 配置
+# Setuptools setup
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-thordata = ["py.typed"]  # 标记为类型化包
+thordata = ["py.typed"]
 
-# Black 代码格式化配置
 [tool.black]
 line-length = 88
-target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+target-version = ['py39', 'py310', 'py311', 'py312']
 include = '\.pyi?$'
 
-# Ruff 代码检查配置
 [tool.ruff]
 line-length = 88
-target-version = "py38"
+target-version = "py39"
 
 [tool.ruff.lint]
 select = [
@@ -99,7 +97,7 @@ ignore = [
 [tool.ruff.lint.isort]
 known-first-party = ["thordata"]
 
-# Mypy 类型检查配置
+# Mypy
 [tool.mypy]
 python_version = "3.9"
 warn_return_any = false
@@ -115,13 +113,13 @@ ignore_missing_imports = true
 module = ["aiohttp.*", "requests.*"]
 ignore_missing_imports = true
 
-# Pytest 配置
+# Pytest setup
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "-v --cov=thordata --cov-report=term-missing"
 
-# Coverage 配置
+# Coverage setup
 [tool.coverage.run]
 source = ["src/thordata"]
 branch = true

@@ -26,6 +26,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional, Union
 
+import os
 import requests
 
 from ._utils import (
@@ -96,6 +97,10 @@ class ThordataClient:
         proxy_port: int = 9999,
         timeout: int = 30,
         retry_config: Optional[RetryConfig] = None,
+        scraperapi_base_url: Optional[str] = None,
+        universalapi_base_url: Optional[str] = None,
+        web_scraper_api_base_url: Optional[str] = None,
+        locations_base_url: Optional[str] = None,
     ) -> None:
         """Initialize the Thordata Client."""
         if not scraper_token:
@@ -118,19 +123,53 @@ class ThordataClient:
             f"http://td-customer-{self.scraper_token}:@{proxy_host}:{proxy_port}"
         )
 
-        # Initialize session with default proxy settings
-        self._session = requests.Session()
-        self._session.proxies = {
+        # Sessions:
+        # - _proxy_session: used for proxy network traffic to target sites
+        # - _api_session: used for Thordata APIs (SERP/Universal/Tasks/Locations)
+        #
+        # We intentionally do NOT set session-level proxies for _api_session,
+        # so developers can rely on system proxy settings (e.g., Clash) via env vars.
+        self._proxy_session = requests.Session()
+        self._proxy_session.trust_env = False
+        self._proxy_session.proxies = {
             "http": self._default_proxy_url,
             "https": self._default_proxy_url,
         }
 
-        # Store endpoint URLs
-        self._serp_url = f"{self.BASE_URL}/request"
-        self._universal_url = f"{self.UNIVERSAL_URL}/request"
-        self._builder_url = f"{self.BASE_URL}/builder"
-        self._status_url = f"{self.API_URL}/tasks-status"
-        self._download_url = f"{self.API_URL}/tasks-download"
+        self._api_session = requests.Session()
+        self._api_session.trust_env = True
+
+        # Base URLs (allow override via args or env vars for testing and custom routing)
+        scraperapi_base = (
+            scraperapi_base_url
+            or os.getenv("THORDATA_SCRAPERAPI_BASE_URL")
+            or self.BASE_URL
+        ).rstrip("/")
+
+        universalapi_base = (
+            universalapi_base_url
+            or os.getenv("THORDATA_UNIVERSALAPI_BASE_URL")
+            or self.UNIVERSAL_URL
+        ).rstrip("/")
+
+        web_scraper_api_base = (
+            web_scraper_api_base_url
+            or os.getenv("THORDATA_WEB_SCRAPER_API_BASE_URL")
+            or self.API_URL
+        ).rstrip("/")
+
+        locations_base = (
+            locations_base_url
+            or os.getenv("THORDATA_LOCATIONS_BASE_URL")
+            or self.LOCATIONS_URL
+        ).rstrip("/")
+
+        self._serp_url = f"{scraperapi_base}/request"
+        self._builder_url = f"{scraperapi_base}/builder"
+        self._universal_url = f"{universalapi_base}/request"
+        self._status_url = f"{web_scraper_api_base}/tasks-status"
+        self._download_url = f"{web_scraper_api_base}/tasks-download"
+        self._locations_base_url = locations_base
 
     # =========================================================================
     # Proxy Network Methods
@@ -335,7 +374,7 @@ class ThordataClient:
         logger.info(f"SERP Search: {engine_str} - {query}")
 
         try:
-            response = self._session.post(
+            response = self._api_session.post(
                 self._serp_url,
                 data=payload,
                 headers=headers,
@@ -346,6 +385,17 @@ class ThordataClient:
             # JSON mode (default)
             if output_format.lower() == "json":
                 data = response.json()
+
+                if isinstance(data, dict):
+                    code = data.get("code")
+                    if code is not None and code != 200:
+                        msg = extract_error_message(data)
+                        raise_for_code(
+                            f"SERP API Error: {msg}",
+                            code=code,
+                            payload=data,
+                        )
+
                 return parse_json_response(data)
 
             # HTML mode: wrap as dict to keep return type stable
@@ -394,7 +444,7 @@ class ThordataClient:
         logger.info(f"SERP Advanced Search: {request.engine} - {request.query}")
 
         try:
-            response = self._session.post(
+            response = self._api_session.post(
                 self._serp_url,
                 data=payload,
                 headers=headers,
@@ -404,6 +454,17 @@ class ThordataClient:
 
             if request.output_format.lower() == "json":
                 data = response.json()
+
+                if isinstance(data, dict):
+                    code = data.get("code")
+                    if code is not None and code != 200:
+                        msg = extract_error_message(data)
+                        raise_for_code(
+                            f"SERP API Error: {msg}",
+                            code=code,
+                            payload=data,
+                        )
+
                 return parse_json_response(data)
 
             return {"html": response.text}
@@ -499,7 +560,7 @@ class ThordataClient:
         )
 
         try:
-            response = self._session.post(
+            response = self._api_session.post(
                 self._universal_url,
                 data=payload,
                 headers=headers,
@@ -612,7 +673,7 @@ class ThordataClient:
         logger.info(f"Creating Scraper Task: {config.spider_name}")
 
         try:
-            response = self._session.post(
+            response = self._api_session.post(
                 self._builder_url,
                 data=payload,
                 headers=headers,
@@ -650,7 +711,7 @@ class ThordataClient:
         payload = {"tasks_ids": task_id}
 
         try:
-            response = self._session.post(
+            response = self._api_session.post(
                 self._status_url,
                 data=payload,
                 headers=headers,
@@ -685,7 +746,7 @@ class ThordataClient:
         logger.info(f"Getting result URL for Task: {task_id}")
 
         try:
-            response = self._session.post(
+            response = self._api_session.post(
                 self._download_url,
                 data=payload,
                 headers=headers,
@@ -869,12 +930,12 @@ class ThordataClient:
         for key, value in kwargs.items():
             params[key] = str(value)
 
-        url = f"{self.LOCATIONS_URL}/{endpoint}"
+        url = f"{self._locations_base_url}/{endpoint}"
 
         logger.debug(f"Locations API request: {url}")
 
         # Use requests.get directly (no proxy needed for this API)
-        response = requests.get(url, params=params, timeout=30)
+        response = self._api_session.get(url, params=params, timeout=30)
         response.raise_for_status()
 
         data = response.json()
@@ -913,7 +974,7 @@ class ThordataClient:
 
         @with_retry(self._retry_config)
         def _do_request() -> requests.Response:
-            return self._session.request(method, url, **kwargs)
+            return self._proxy_session.request(method, url, **kwargs)
 
         try:
             return _do_request()
@@ -924,7 +985,8 @@ class ThordataClient:
 
     def close(self) -> None:
         """Close the underlying session."""
-        self._session.close()
+        self._proxy_session.close()
+        self._api_session.close()
 
     def __enter__(self) -> ThordataClient:
         return self

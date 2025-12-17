@@ -213,6 +213,22 @@ class ThordataValidationError(ThordataAPIError):
         return False  # Bad requests shouldn't be retried
 
 
+class ThordataNotCollectedError(ThordataAPIError):
+    """
+    The request was accepted but no valid data could be collected/parsed.
+
+    API Code: 300
+    Billing: Not billed (per Thordata billing rules).
+    This error is often transient and typically safe to retry.
+    """
+
+    HTTP_STATUS_CODES = {300}
+
+    @property
+    def is_retryable(self) -> bool:
+        return True
+
+
 # =============================================================================
 # Exception Factory
 # =============================================================================
@@ -255,6 +271,10 @@ def raise_for_code(
         "payload": payload,
         "request_id": request_id,
     }
+
+    # Not collected (often retryable, not billed)
+    if effective_code in ThordataNotCollectedError.HTTP_STATUS_CODES:
+        raise ThordataNotCollectedError(message, **kwargs)
 
     # Auth errors
     if effective_code in ThordataAuthError.HTTP_STATUS_CODES:
