@@ -16,35 +16,40 @@ import logging
 import os
 import sys
 
-from dotenv import load_dotenv
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
 
 from thordata import (
-    ThordataClient,
     AsyncThordataClient,
     Engine,
     SerpRequest,
     ThordataAuthError,
     ThordataRateLimitError,
+    ThordataClient,
 )
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 
-load_dotenv()
 
-SCRAPER_TOKEN = os.getenv("THORDATA_SCRAPER_TOKEN")
-
-if not SCRAPER_TOKEN:
-    print("❌ Error: THORDATA_SCRAPER_TOKEN is missing in .env")
-    sys.exit(1)
+def _load_env() -> None:
+    if load_dotenv is not None:
+        load_dotenv()
 
 
-def demo_basic_search():
+def demo_basic_search(scraper_token: str) -> None:
     """Basic Google search."""
     print("\n" + "=" * 50)
-    print("1️⃣  Basic Google Search")
+    print("1)  Basic Google Search")
     print("=" * 50)
 
-    client = ThordataClient(scraper_token=SCRAPER_TOKEN)
+    client = ThordataClient(scraper_token=scraper_token)
 
     try:
         results = client.serp_search(
@@ -54,7 +59,7 @@ def demo_basic_search():
         )
 
         organic = results.get("organic", [])
-        print(f"✅ Found {len(organic)} organic results:\n")
+        print(f"[OK] Found {len(organic)} organic results:\n")
 
         for i, item in enumerate(organic[:3], 1):
             title = item.get("title", "No title")
@@ -63,20 +68,20 @@ def demo_basic_search():
             print(f"      {link}\n")
 
     except ThordataRateLimitError as e:
-        print(f"❌ Rate limited: {e}")
+        print(f"[ERROR] Rate limited: {e}")
     except ThordataAuthError as e:
-        print(f"❌ Auth error: {e}")
+        print(f"[ERROR] Auth error: {e}")
     except Exception as e:
-        print(f"❌ Search failed: {e}")
+        print(f"[ERROR] Search failed: {e}")
 
 
-def demo_bing_search():
+def demo_bing_search(scraper_token: str) -> None:
     """Bing search example."""
     print("\n" + "=" * 50)
-    print("2️⃣  Bing Search")
+    print("2)  Bing Search")
     print("=" * 50)
 
-    client = ThordataClient(scraper_token=SCRAPER_TOKEN)
+    client = ThordataClient(scraper_token=scraper_token)
 
     try:
         results = client.serp_search(
@@ -86,19 +91,19 @@ def demo_bing_search():
         )
 
         organic = results.get("organic", [])
-        print(f"✅ Bing returned {len(organic)} results")
+        print(f"[OK] Bing returned {len(organic)} results")
 
     except Exception as e:
-        print(f"❌ Bing search failed: {e}")
+        print(f"[ERROR] Bing search failed: {e}")
 
 
-def demo_google_shopping():
+def demo_google_shopping(scraper_token: str) -> None:
     """Google Shopping search."""
     print("\n" + "=" * 50)
-    print("3️⃣  Google Shopping Search")
+    print("3)  Google Shopping Search")
     print("=" * 50)
 
-    client = ThordataClient(scraper_token=SCRAPER_TOKEN)
+    client = ThordataClient(scraper_token=scraper_token)
 
     try:
         results = client.serp_search(
@@ -110,7 +115,7 @@ def demo_google_shopping():
         )
 
         shopping = results.get("shopping_results", [])
-        print(f"✅ Found {len(shopping)} shopping results")
+        print(f"[OK] Found {len(shopping)} shopping results")
 
         for item in shopping[:3]:
             title = item.get("title", "Unknown")
@@ -118,16 +123,16 @@ def demo_google_shopping():
             print(f"   • {title} - {price}")
 
     except Exception as e:
-        print(f"❌ Shopping search failed: {e}")
+        print(f"[ERROR] Shopping search failed: {e}")
 
 
-def demo_advanced_search():
+def demo_advanced_search(scraper_token: str) -> None:
     """Advanced search using SerpRequest."""
     print("\n" + "=" * 50)
-    print("4️⃣  Advanced Search (SerpRequest)")
+    print("4)  Advanced Search (SerpRequest)")
     print("=" * 50)
 
-    client = ThordataClient(scraper_token=SCRAPER_TOKEN)
+    client = ThordataClient(scraper_token=scraper_token)
 
     # Create detailed search request
     request = SerpRequest(
@@ -149,19 +154,19 @@ def demo_advanced_search():
     try:
         results = client.serp_search_advanced(request)
         news = results.get("news_results", results.get("organic", []))
-        print(f"\n✅ Found {len(news)} news results")
+        print(f"\n[OK] Found {len(news)} news results")
 
     except Exception as e:
-        print(f"❌ Advanced search failed: {e}")
+        print(f"[ERROR] Advanced search failed: {e}")
 
 
-async def demo_async_search():
+async def demo_async_search(scraper_token: str) -> None:
     """Async SERP search."""
     print("\n" + "=" * 50)
-    print("5️⃣  Async Search (Yandex)")
+    print("5)  Async Search (Yandex)")
     print("=" * 50)
 
-    async with AsyncThordataClient(scraper_token=SCRAPER_TOKEN) as client:
+    async with AsyncThordataClient(scraper_token=scraper_token) as client:
         try:
             results = await client.serp_search(
                 query="Python async programming",
@@ -170,23 +175,35 @@ async def demo_async_search():
             )
 
             organic = results.get("organic", [])
-            print(f"✅ Yandex returned {len(organic)} results")
+            print(f"[OK] Yandex returned {len(organic)} results")
 
         except Exception as e:
-            print(f"❌ Async search failed: {e}")
+            print(f"[ERROR] Async search failed: {e}")
+
+
+def main() -> int:
+    _load_env()
+
+    scraper_token = os.getenv("THORDATA_SCRAPER_TOKEN")
+    if not scraper_token:
+        print("Error: THORDATA_SCRAPER_TOKEN is missing.")
+        return 1
+
+    print("=" * 50)
+    print("Thordata SDK - SERP API Demo")
+    print("=" * 50)
+
+    demo_basic_search(scraper_token)
+    demo_bing_search(scraper_token)
+    demo_google_shopping(scraper_token)
+    demo_advanced_search(scraper_token)
+    asyncio.run(demo_async_search(scraper_token))
+
+    print("=" * 50)
+    print("Demo complete.")
+    print("=" * 50)
+    return 0
 
 
 if __name__ == "__main__":
-    print("=" * 50)
-    print("   Thordata SDK - SERP API Demo")
-    print("=" * 50)
-
-    demo_basic_search()
-    demo_bing_search()
-    demo_google_shopping()
-    demo_advanced_search()
-    asyncio.run(demo_async_search())
-
-    print("\n" + "=" * 50)
-    print("   Demo Complete!")
-    print("=" * 50)
+    raise SystemExit(main())

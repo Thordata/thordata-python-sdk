@@ -35,7 +35,7 @@ Async Usage:
     >>> asyncio.run(main())
 """
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __author__ = "Thordata Developer Team"
 __email__ = "support@thordata.com"
 
@@ -72,6 +72,7 @@ from .exceptions import (
     ThordataServerError,
     ThordataTimeoutError,
     ThordataValidationError,
+    ThordataNotCollectedError,
 )
 
 # Models
@@ -128,6 +129,7 @@ __all__ = [
     "ThordataRateLimitError",
     "ThordataServerError",
     "ThordataValidationError",
+    "ThordataNotCollectedError",
     # Retry
     "RetryConfig",
 ]

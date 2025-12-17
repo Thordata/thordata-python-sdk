@@ -64,7 +64,7 @@ class RetryConfig:
 
     # Status codes to retry on (5xx server errors + 429 rate limit)
     retry_on_status_codes: Set[int] = field(
-        default_factory=lambda: {429, 500, 502, 503, 504}
+        default_factory=lambda: {300, 429, 500, 502, 503, 504}
     )
 
     # Exception types to always retry on
@@ -252,6 +252,14 @@ def _extract_status_code(exception: Exception) -> Optional[int]:
     Returns:
         HTTP status code if found, None otherwise.
     """
+    # Unwrap nested/original errors (e.g., ThordataNetworkError(original_error=...))
+    if hasattr(exception, "original_error") and getattr(exception, "original_error"):
+        nested = getattr(exception, "original_error")
+        if isinstance(nested, Exception):
+            nested_code = _extract_status_code(nested)
+            if nested_code is not None:
+                return nested_code
+
     # Check Thordata exceptions
     if hasattr(exception, "status_code"):
         return exception.status_code
