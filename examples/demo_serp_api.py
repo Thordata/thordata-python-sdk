@@ -108,8 +108,7 @@ def demo_google_shopping(scraper_token: str) -> None:
     try:
         results = client.serp_search(
             query="laptop",
-            engine=Engine.GOOGLE,
-            search_type="shopping",
+            engine="google_shopping",
             country="us",
             num=5,
         )
@@ -120,7 +119,7 @@ def demo_google_shopping(scraper_token: str) -> None:
         for item in shopping[:3]:
             title = item.get("title", "Unknown")
             price = item.get("price", "N/A")
-            print(f"   • {title} - {price}")
+            print(f"   - {title} - {price}")
 
     except Exception as e:
         print(f"[ERROR] Shopping search failed: {e}")
@@ -137,11 +136,10 @@ def demo_advanced_search(scraper_token: str) -> None:
     # Create detailed search request
     request = SerpRequest(
         query="AI news 2024",
-        engine="google",
+        engine="google_news",
         num=10,
         country="us",
         language="en",
-        search_type="news",
         time_filter="week",
         safe_search=True,
     )
