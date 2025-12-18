@@ -17,9 +17,9 @@ import sys
 from dotenv import load_dotenv
 
 from thordata import (
-    ThordataClient,
     ProxyConfig,
     StickySession,
+    ThordataClient,
     ThordataError,
 )
 

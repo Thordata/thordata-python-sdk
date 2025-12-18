@@ -253,8 +253,10 @@ class ProxyConfig:
                 login=self.build_username(), password=self.password
             )
             return proxy_url, proxy_auth
-        except ImportError:
-            raise ImportError("aiohttp is required for async proxy configuration")
+        except ImportError as e:
+            raise ImportError(
+                "aiohttp is required for async proxy configuration"
+            ) from e
 
 
 @dataclass

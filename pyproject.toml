@@ -87,6 +87,8 @@ select = [
     "E",   # pycodestyle errors
     "W",   # pycodestyle warnings
     "F",   # pyflakes
+    "I",   # isort (import sorting)
+    "B",   # flake8-bugbear
 ]
 ignore = [
     "E501",  # line too long (handled by black)

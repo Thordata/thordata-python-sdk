@@ -253,8 +253,8 @@ def _extract_status_code(exception: Exception) -> Optional[int]:
         HTTP status code if found, None otherwise.
     """
     # Unwrap nested/original errors (e.g., ThordataNetworkError(original_error=...))
-    if hasattr(exception, "original_error") and getattr(exception, "original_error"):
-        nested = getattr(exception, "original_error")
+    if hasattr(exception, "original_error") and exception.original_error:
+        nested = exception.original_error
         if isinstance(nested, Exception):
             nested_code = _extract_status_code(nested)
             if nested_code is not None:

@@ -19,7 +19,7 @@ import sys
 
 from dotenv import load_dotenv
 
-from thordata import ThordataClient, Engine
+from thordata import Engine, ThordataClient
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 
