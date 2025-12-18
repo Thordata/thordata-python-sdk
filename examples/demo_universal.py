@@ -1,218 +1,136 @@
 """
-Thordata Universal API (Web Unlocker) Demo
+Universal API Demo - Web Unlocker / Universal Scrape
 
 Demonstrates:
-- Basic HTML scraping (no JS)
-- JS rendering for SPA/dynamic pages
-- Cleaning JS/CSS from returned content
-- Using custom headers and cookies
-- Taking PNG screenshots
+- Fetching HTML via Universal API
+- Fetching screenshot (PNG) via Universal API
+- Optional async usage
+
+Environment variables:
+- THORDATA_SCRAPER_TOKEN (required)
+- THORDATA_DEMO_OUTPUT_DIR (optional) if set, writes universal.html and screenshot.png
 
 Usage:
-    1. Copy examples/.env.example to .env
-    2. Fill in THORDATA_SCRAPER_TOKEN in .env
-    3. Run:
-        python examples/demo_universal.py
+    python examples/demo_universal.py
 """
 
-import logging
+from __future__ import annotations
+
+import asyncio
 import os
 import sys
-from pathlib import Path
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
 
-from thordata import (
-    ThordataClient,
-    UniversalScrapeRequest,
-    ThordataError,
-    ThordataAuthError,
-    ThordataRateLimitError,
-)
-
-logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
-
-# Load .env from project root
-ROOT_DIR = Path(__file__).parent.parent
-load_dotenv(ROOT_DIR / ".env")
-
-SCRAPER_TOKEN = os.getenv("THORDATA_SCRAPER_TOKEN")
-
-if not SCRAPER_TOKEN:
-    print("❌ Error: THORDATA_SCRAPER_TOKEN is missing in .env")
-    sys.exit(1)
-
-client = ThordataClient(scraper_token=SCRAPER_TOKEN)
+from thordata import AsyncThordataClient, ThordataClient
 
 
-def demo_basic_html() -> None:
-    """1) Basic HTML scrape without JS rendering."""
-    url = "https://httpbin.org/html"
-    print("\n" + "=" * 70)
-    print(f"1️⃣  Basic HTML Scrape (no JS) - {url}")
-    print("=" * 70)
+def _configure_stdio() -> None:
+    # Avoid UnicodeEncodeError on Windows consoles with legacy encodings.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-    try:
+
+def _load_env() -> None:
+    if load_dotenv is not None:
+        load_dotenv()
+
+
+def _maybe_write_files(html: str, png: bytes) -> None:
+    out_dir = os.getenv("THORDATA_DEMO_OUTPUT_DIR")
+    if not out_dir:
+        return
+
+    os.makedirs(out_dir, exist_ok=True)
+
+    html_path = os.path.join(out_dir, "universal.html")
+    png_path = os.path.join(out_dir, "screenshot.png")
+
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(html)
+
+    with open(png_path, "wb") as f:
+        f.write(png)
+
+    print(f"Wrote demo outputs to: {out_dir}")
+
+
+def demo_sync(scraper_token: str) -> None:
+    print("=" * 50)
+    print("1) Sync Universal Scrape")
+    print("=" * 50)
+
+    with ThordataClient(scraper_token=scraper_token) as client:
         html = client.universal_scrape(
-            url=url,
+            "https://example.com",
             js_render=False,
             output_format="html",
         )
-
-        print("✅ Success! Received HTML content.")
-        print("   Preview:")
-        print("-" * 70)
-        print(str(html)[:300])
-        print("-" * 70)
-
-    except ThordataRateLimitError as e:
-        print(f"❌ Rate limit / quota issue: {e}")
-    except ThordataAuthError as e:
-        print(f"❌ Authentication error: {e}")
-    except ThordataError as e:
-        print(f"❌ Thordata SDK error: {e}")
-    except Exception as e:
-        print(f"❌ Unexpected error: {e}")
-
-
-def demo_js_render_wait() -> None:
-    """2) JS rendering with wait_for selector."""
-    url = "https://example.com"
-    print("\n" + "=" * 70)
-    print(f"2️⃣  JS Render + Wait for Selector - {url}")
-    print("=" * 70)
-
-    try:
-        html = client.universal_scrape(
-            url=url,
-            js_render=True,
-            output_format="html",
-            # 等待 .content 或主内容元素出现，示例中用 body 替代
-            wait_for="body",
-        )
-
-        print("✅ Success! JS-rendered HTML acquired.")
-        print("   Preview:")
-        print("-" * 70)
-        print(str(html)[:300])
-        print("-" * 70)
-
-    except ThordataError as e:
-        print(f"❌ Thordata SDK error: {e}")
-    except Exception as e:
-        print(f"❌ Unexpected error: {e}")
-
-
-def demo_clean_content() -> None:
-    """3) Clean JS/CSS from returned HTML."""
-    url = "https://www.google.com"
-    print("\n" + "=" * 70)
-    print(f"3️⃣  Clean Content (remove JS/CSS) - {url}")
-    print("=" * 70)
-
-    try:
-        html = client.universal_scrape(
-            url=url,
-            js_render=True,
-            output_format="html",
-            clean_content="js,css",
-            wait=5000,
-        )
-
-        print("✅ Success! JS/CSS cleaned from HTML.")
-        print("   Preview:")
-        print("-" * 70)
-        print(str(html)[:300])
-        print("-" * 70)
-
-    except ThordataError as e:
-        print(f"❌ Thordata SDK error: {e}")
-    except Exception as e:
-        print(f"❌ Unexpected error: {e}")
-
-
-def demo_custom_headers_and_cookies() -> None:
-    """4) Use custom headers and cookies via UniversalScrapeRequest."""
-    url = "https://httpbin.org/headers"
-    print("\n" + "=" * 70)
-    print(f"4️⃣  Custom Headers & Cookies - {url}")
-    print("=" * 70)
-
-    request = UniversalScrapeRequest(
-        url=url,
-        js_render=False,
-        output_format="html",
-        headers=[
-            {
-                "name": "User-Agent",
-                "value": "Mozilla/5.0 (ThordataDemo/1.0)",
-            },
-            {
-                "name": "X-Demo-Header",
-                "value": "DemoValue",
-            },
-        ],
-        cookies=[
-            {"name": "session", "value": "demo_session_123"},
-        ],
-    )
-
-    try:
-        html = client.universal_scrape_advanced(request)
-
-        print("✅ Success! Response with custom headers/cookies.")
-        print("   Preview:")
-        print("-" * 70)
-        print(str(html)[:500])
-        print("-" * 70)
-
-    except ThordataError as e:
-        print(f"❌ Thordata SDK error: {e}")
-    except Exception as e:
-        print(f"❌ Unexpected error: {e}")
-
-
-def demo_screenshot() -> None:
-    """5) Take a PNG screenshot and save to disk."""
-    url = "https://www.example.com"
-    filename = ROOT_DIR / "universal_screenshot.png"
-
-    print("\n" + "=" * 70)
-    print(f"5️⃣  Screenshot (PNG) - {url}")
-    print("=" * 70)
-
-    try:
-        png_bytes = client.universal_scrape(
-            url=url,
+        png = client.universal_scrape(
+            "https://example.com",
             js_render=True,
             output_format="png",
         )
 
-        if isinstance(png_bytes, bytes):
-            with open(filename, "wb") as f:
-                f.write(png_bytes)
+    assert isinstance(html, str)
+    assert isinstance(png, (bytes, bytearray))
 
-            print("✅ Screenshot saved!")
-            print(f"   File: {filename}")
-            print(f"   Size: {len(png_bytes):,} bytes")
-        else:
-            print("⚠️  Expected PNG bytes, got:", type(png_bytes))
+    print(f"HTML length: {len(html)}")
+    print(f"PNG bytes: {len(png)}")
 
-    except ThordataError as e:
-        print(f"❌ Thordata SDK error: {e}")
-    except Exception as e:
-        print(f"❌ Unexpected error: {e}")
+    _maybe_write_files(html, bytes(png))
+
+
+async def demo_async(scraper_token: str) -> None:
+    print("=" * 50)
+    print("2) Async Universal Scrape")
+    print("=" * 50)
+
+    async with AsyncThordataClient(scraper_token=scraper_token) as client:
+        html = await client.universal_scrape(
+            "https://example.com",
+            js_render=False,
+            output_format="html",
+        )
+        png = await client.universal_scrape(
+            "https://example.com",
+            js_render=True,
+            output_format="png",
+        )
+
+    assert isinstance(html, str)
+    assert isinstance(png, (bytes, bytearray))
+
+    print(f"Async HTML length: {len(html)}")
+    print(f"Async PNG bytes: {len(png)}")
+
+
+def main() -> int:
+    _configure_stdio()
+    _load_env()
+
+    scraper_token = os.getenv("THORDATA_SCRAPER_TOKEN")
+    if not scraper_token:
+        print("Error: THORDATA_SCRAPER_TOKEN is missing.")
+        return 1
+
+    print("=" * 50)
+    print("Thordata SDK - Universal API Demo")
+    print("=" * 50)
+
+    demo_sync(scraper_token)
+    asyncio.run(demo_async(scraper_token))
+
+    print("=" * 50)
+    print("Demo complete.")
+    print("=" * 50)
+    return 0
 
 
 if __name__ == "__main__":
-    print("=" * 70)
-    print(" Thordata SDK - Universal API (Web Unlocker) Demo")
-    print("=" * 70)
-
-    demo_basic_html()
-    demo_js_render_wait()
-    demo_clean_content()
-    demo_custom_headers_and_cookies()
-    demo_screenshot()
-
-    print("\nAll demos completed.")
+    raise SystemExit(main())
