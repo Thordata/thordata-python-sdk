@@ -31,8 +31,8 @@ from thordata import (
     Engine,
     SerpRequest,
     ThordataAuthError,
-    ThordataRateLimitError,
     ThordataClient,
+    ThordataRateLimitError,
 )
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")

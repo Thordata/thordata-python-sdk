@@ -68,11 +68,11 @@ from .exceptions import (
     ThordataConfigError,
     ThordataError,
     ThordataNetworkError,
+    ThordataNotCollectedError,
     ThordataRateLimitError,
     ThordataServerError,
     ThordataTimeoutError,
     ThordataValidationError,
-    ThordataNotCollectedError,
 )
 
 # Models

@@ -24,9 +24,9 @@ Example:
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Dict, List, Optional, Union
 
-import os
 import requests
 
 from ._utils import (
@@ -405,12 +405,12 @@ class ThordataClient:
             raise ThordataTimeoutError(
                 f"SERP request timed out: {e}",
                 original_error=e,
-            )
+            ) from e
         except requests.RequestException as e:
             raise ThordataNetworkError(
                 f"SERP request failed: {e}",
                 original_error=e,
-            )
+            ) from e
 
     def serp_search_advanced(self, request: SerpRequest) -> Dict[str, Any]:
         """
@@ -473,12 +473,12 @@ class ThordataClient:
             raise ThordataTimeoutError(
                 f"SERP request timed out: {e}",
                 original_error=e,
-            )
+            ) from e
         except requests.RequestException as e:
             raise ThordataNetworkError(
                 f"SERP request failed: {e}",
                 original_error=e,
-            )
+            ) from e
 
     # =========================================================================
     # Universal Scraping API (Web Unlocker) Methods
@@ -573,11 +573,11 @@ class ThordataClient:
         except requests.Timeout as e:
             raise ThordataTimeoutError(
                 f"Universal scrape timed out: {e}", original_error=e
-            )
+            ) from e
         except requests.RequestException as e:
             raise ThordataNetworkError(
                 f"Universal scrape failed: {e}", original_error=e
-            )
+            ) from e
 
     def _process_universal_response(
         self, response: requests.Response, output_format: str
@@ -691,7 +691,9 @@ class ThordataClient:
             return data["data"]["task_id"]
 
         except requests.RequestException as e:
-            raise ThordataNetworkError(f"Task creation failed: {e}", original_error=e)
+            raise ThordataNetworkError(
+                f"Task creation failed: {e}", original_error=e
+            ) from e
 
     def get_task_status(self, task_id: str) -> str:
         """
@@ -746,9 +748,13 @@ class ThordataClient:
             )
 
         except requests.Timeout as e:
-            raise ThordataTimeoutError(f"Status check timed out: {e}", original_error=e)
+            raise ThordataTimeoutError(
+                f"Status check timed out: {e}", original_error=e
+            ) from e
         except requests.RequestException as e:
-            raise ThordataNetworkError(f"Status check failed: {e}", original_error=e)
+            raise ThordataNetworkError(
+                f"Status check failed: {e}", original_error=e
+            ) from e
 
     def safe_get_task_status(self, task_id: str) -> str:
         """
@@ -796,7 +802,9 @@ class ThordataClient:
             raise RuntimeError("Unexpected state")
 
         except requests.RequestException as e:
-            raise ThordataNetworkError(f"Get result failed: {e}", original_error=e)
+            raise ThordataNetworkError(
+                f"Get result failed: {e}", original_error=e
+            ) from e
 
     def wait_for_task(
         self,
@@ -1008,9 +1016,11 @@ class ThordataClient:
         try:
             return _do_request()
         except requests.Timeout as e:
-            raise ThordataTimeoutError(f"Request timed out: {e}", original_error=e)
+            raise ThordataTimeoutError(
+                f"Request timed out: {e}", original_error=e
+            ) from e
         except requests.RequestException as e:
-            raise ThordataNetworkError(f"Request failed: {e}", original_error=e)
+            raise ThordataNetworkError(f"Request failed: {e}", original_error=e) from e
 
     def close(self) -> None:
         """Close the underlying session."""

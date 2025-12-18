@@ -7,7 +7,6 @@ from urllib.parse import parse_qs
 from pytest_httpserver import HTTPServer
 from werkzeug.wrappers import Request, Response
 
-
 PNG_1X1_BASE64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/"
     "6Xn2mQAAAAASUVORK5CYII="

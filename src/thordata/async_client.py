@@ -24,9 +24,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Any, Dict, List, Optional, Union
 
-import os
 import aiohttp
 
 from ._utils import (
@@ -221,9 +221,11 @@ class AsyncThordataClient:
         except asyncio.TimeoutError as e:
             raise ThordataTimeoutError(
                 f"Async request timed out: {e}", original_error=e
-            )
+            ) from e
         except aiohttp.ClientError as e:
-            raise ThordataNetworkError(f"Async request failed: {e}", original_error=e)
+            raise ThordataNetworkError(
+                f"Async request failed: {e}", original_error=e
+            ) from e
 
     async def post(
         self,
@@ -260,9 +262,11 @@ class AsyncThordataClient:
         except asyncio.TimeoutError as e:
             raise ThordataTimeoutError(
                 f"Async request timed out: {e}", original_error=e
-            )
+            ) from e
         except aiohttp.ClientError as e:
-            raise ThordataNetworkError(f"Async request failed: {e}", original_error=e)
+            raise ThordataNetworkError(
+                f"Async request failed: {e}", original_error=e
+            ) from e
 
     # =========================================================================
     # SERP API Methods
@@ -355,12 +359,12 @@ class AsyncThordataClient:
             raise ThordataTimeoutError(
                 f"SERP request timed out: {e}",
                 original_error=e,
-            )
+            ) from e
         except aiohttp.ClientError as e:
             raise ThordataNetworkError(
                 f"SERP request failed: {e}",
                 original_error=e,
-            )
+            ) from e
 
     async def serp_search_advanced(self, request: SerpRequest) -> Dict[str, Any]:
         """
@@ -403,12 +407,12 @@ class AsyncThordataClient:
             raise ThordataTimeoutError(
                 f"SERP request timed out: {e}",
                 original_error=e,
-            )
+            ) from e
         except aiohttp.ClientError as e:
             raise ThordataNetworkError(
                 f"SERP request failed: {e}",
                 original_error=e,
-            )
+            ) from e
 
     # =========================================================================
     # Universal Scraping API Methods
@@ -500,11 +504,11 @@ class AsyncThordataClient:
         except asyncio.TimeoutError as e:
             raise ThordataTimeoutError(
                 f"Universal scrape timed out: {e}", original_error=e
-            )
+            ) from e
         except aiohttp.ClientError as e:
             raise ThordataNetworkError(
                 f"Universal scrape failed: {e}", original_error=e
-            )
+            ) from e
 
     # =========================================================================
     # Web Scraper API Methods
@@ -559,7 +563,9 @@ class AsyncThordataClient:
                 return data["data"]["task_id"]
 
         except aiohttp.ClientError as e:
-            raise ThordataNetworkError(f"Task creation failed: {e}", original_error=e)
+            raise ThordataNetworkError(
+                f"Task creation failed: {e}", original_error=e
+            ) from e
 
     async def get_task_status(self, task_id: str) -> str:
         """
@@ -610,11 +616,11 @@ class AsyncThordataClient:
         except asyncio.TimeoutError as e:
             raise ThordataTimeoutError(
                 f"Async status check timed out: {e}", original_error=e
-            )
+            ) from e
         except aiohttp.ClientError as e:
             raise ThordataNetworkError(
                 f"Async status check failed: {e}", original_error=e
-            )
+            ) from e
 
     async def safe_get_task_status(self, task_id: str) -> str:
         """
@@ -658,7 +664,9 @@ class AsyncThordataClient:
                 raise RuntimeError("Unexpected state")
 
         except aiohttp.ClientError as e:
-            raise ThordataNetworkError(f"Get result failed: {e}", original_error=e)
+            raise ThordataNetworkError(
+                f"Get result failed: {e}", original_error=e
+            ) from e
 
     async def wait_for_task(
         self,

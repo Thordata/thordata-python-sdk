@@ -67,7 +67,7 @@ def decode_base64_image(png_str: str) -> bytes:
     try:
         return base64.b64decode(png_str)
     except Exception as e:
-        raise ValueError(f"Failed to decode base64 image: {e}")
+        raise ValueError(f"Failed to decode base64 image: {e}") from e
 
 
 def build_auth_headers(token: str) -> Dict[str, str]:
