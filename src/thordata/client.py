@@ -697,11 +697,13 @@ class ThordataClient:
         """
         Check the status of an asynchronous scraping task.
 
-        Args:
-            task_id: The task ID from create_scraper_task.
-
         Returns:
             Status string (e.g., "running", "ready", "failed").
+
+        Raises:
+            ThordataConfigError: If public credentials are missing.
+            ThordataAPIError: If API returns a non-200 code in JSON payload.
+            ThordataNetworkError: If network/HTTP request fails.
         """
         self._require_public_credentials()
 
@@ -718,18 +720,46 @@ class ThordataClient:
                 timeout=30,
             )
             response.raise_for_status()
-
             data = response.json()
 
-            if data.get("code") == 200 and data.get("data"):
-                for item in data["data"]:
+            if isinstance(data, dict):
+                code = data.get("code")
+                if code is not None and code != 200:
+                    msg = extract_error_message(data)
+                    raise_for_code(
+                        f"Task status API Error: {msg}",
+                        code=code,
+                        payload=data,
+                    )
+
+                items = data.get("data") or []
+                for item in items:
                     if str(item.get("task_id")) == str(task_id):
                         return item.get("status", "unknown")
 
-            return "unknown"
+                return "unknown"
 
-        except Exception as e:
-            logger.error(f"Status check failed: {e}")
+            # Unexpected payload type
+            raise ThordataNetworkError(
+                f"Unexpected task status response type: {type(data).__name__}",
+                original_error=None,
+            )
+
+        except requests.Timeout as e:
+            raise ThordataTimeoutError(f"Status check timed out: {e}", original_error=e)
+        except requests.RequestException as e:
+            raise ThordataNetworkError(f"Status check failed: {e}", original_error=e)
+
+    def safe_get_task_status(self, task_id: str) -> str:
+        """
+        Backward-compatible status check.
+
+        Returns:
+            Status string, or "error" on any exception.
+        """
+        try:
+            return self.get_task_status(task_id)
+        except Exception:
             return "error"
 
     def get_task_result(self, task_id: str, file_type: str = "json") -> str:
@@ -797,9 +827,9 @@ class ThordataClient:
         """
         import time
 
-        elapsed = 0.0
+        start = time.monotonic()
 
-        while elapsed < max_wait:
+        while (time.monotonic() - start) < max_wait:
             status = self.get_task_status(task_id)
 
             logger.debug(f"Task {task_id} status: {status}")
@@ -817,7 +847,6 @@ class ThordataClient:
                 return status
 
             time.sleep(poll_interval)
-            elapsed += poll_interval
 
         raise TimeoutError(f"Task {task_id} did not complete within {max_wait} seconds")
 
