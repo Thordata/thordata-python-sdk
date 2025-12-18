@@ -8,7 +8,7 @@
 
 [![CI](https://github.com/Thordata/thordata-python-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/Thordata/thordata-python-sdk/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/thordata-sdk?color=blue)](https://pypi.org/project/thordata-sdk/)
-[![Python](https://img.shields.io/badge/python-3.8+-blue)](https://python.org)
+[![Python](https://img.shields.io/badge/python-3.9+-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Typed](https://img.shields.io/badge/typing-typed-purple)](https://github.com/Thordata/thordata-python-sdk)
 
@@ -211,18 +211,29 @@ for result in results.get("organic", []):
 #### General Calling Method
 
 ```python
-from thordata import ThordataClient, Engine
+from thordata import ThordataClient
 
 client = ThordataClient(scraper_token="YOUR_SCRAPER_TOKEN")
 
+# Recommended: use dedicated engines for Google verticals when available
+news = client.serp_search(
+    query="pizza",
+    engine="google_news",
+    country="us",
+    language="en",
+    num=10,
+    so=1,  # 0=relevance, 1=date (Google News)
+)
+
+# Alternative: use Google generic engine + tbm via `search_type`
+# Note: `search_type` maps to Google tbm and is mainly intended for engine="google".
 results = client.serp_search(
     query="pizza",
-    engine=Engine.GOOGLE,      # or "google"
+    engine="google",
     num=10,
     country="us",
     language="en",
-    search_type="news",       # corresponds to tbm=nws
-    # Other parameters are passed in via kwargs
+    search_type="news",  # tbm=nws (Google generic engine)
     ibp="some_ibp_value",
     lsig="some_lsig_value",
 )
@@ -240,14 +251,14 @@ client = ThordataClient(scraper_token="your_token")
 # Create a detailed search request
 request = SerpRequest(
     query="best laptops 2024",
-    engine="google",
+    engine="google_shopping",
     num=20,
     country="us",
     language="en",
-    search_type="shopping",     # shopping, news, images, videos
-    time_filter="month",        # hour, day, week, month, year
     safe_search=True,
-    device="mobile",            # desktop, mobile, tablet
+    device="mobile",
+    # Shopping-specific params can be passed via extra_params
+    # e.g. min_price=500, max_price=1500, sort_by=1, shoprs="..."
 )
 
 results = client.serp_search_advanced(request)
@@ -323,19 +334,19 @@ results = client.serp_search(
 
 ### Google Shopping Parameter Mapping
 
-Shopping still uses engine="google", search_type="shopping" to select Shopping mode:
+Recommended: use the dedicated Google Shopping engine (`engine="google_shopping"`):
 
 ```python
 results = client.serp_search(
     query="iPhone 15",
-    engine=Engine.GOOGLE,
-    search_type="shopping",   # tbm=shop
+    engine="google_shopping",
     country="us",
     language="en",
     num=20,
-    min_price=500,            # Parameters below passed through kwargs
+    # Shopping parameters are passed through kwargs
+    min_price=500,
     max_price=1500,
-    sort_by=1,                # 1=price low to high, 2=high to low
+    sort_by=1,
     free_shipping=True,
     on_sale=True,
     small_business=True,
@@ -344,6 +355,7 @@ results = client.serp_search(
 )
 shopping_items = results.get("shopping_results", [])
 ```
+Alternative: use `engine="google"` with `search_type="shopping"` (tbm=shop).
 
 | Document Parameter | SDK Field/Usage | Description |
 |-------------------|-----------------|-------------|
@@ -440,15 +452,14 @@ Google News has a set of exclusive token parameters for precise control of "topi
 ```python
 results = client.serp_search(
     query="AI regulation",
-    engine=Engine.GOOGLE,
-    search_type="news",           # tbm=nws
+    engine="google_news",
     country="us",
     language="en",
-    topic_token="YOUR_TOPIC_TOKEN",               # Optional
-    publication_token="YOUR_PUBLICATION_TOKEN",   # Optional
-    section_token="YOUR_SECTION_TOKEN",           # Optional
-    story_token="YOUR_STORY_TOKEN",               # Optional
-    so=1,   # 0=relevance, 1=time
+    topic_token="YOUR_TOPIC_TOKEN",
+    publication_token="YOUR_PUBLICATION_TOKEN",
+    section_token="YOUR_SECTION_TOKEN",
+    story_token="YOUR_STORY_TOKEN",
+    so=1,  # 0=relevance, 1=date
 )
 news_results = results.get("news_results", results.get("organic", []))
 ```
