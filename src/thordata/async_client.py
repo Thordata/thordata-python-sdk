@@ -29,9 +29,11 @@ from typing import Any, Dict, List, Optional, Union
 
 import aiohttp
 
+from . import __version__ as _sdk_version
 from ._utils import (
     build_auth_headers,
     build_public_api_headers,
+    build_user_agent,
     decode_base64_image,
     extract_error_message,
     parse_json_response,
@@ -159,7 +161,9 @@ class AsyncThordataClient:
         """Async context manager entry."""
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(
-                timeout=self._default_timeout, trust_env=True
+                timeout=self._default_timeout,
+                trust_env=True,
+                headers={"User-Agent": build_user_agent(_sdk_version, "aiohttp")},
             )
         return self
 
