@@ -29,9 +29,11 @@ from typing import Any, Dict, List, Optional, Union
 
 import requests
 
+from . import __version__ as _sdk_version
 from ._utils import (
     build_auth_headers,
     build_public_api_headers,
+    build_user_agent,
     decode_base64_image,
     extract_error_message,
     parse_json_response,
@@ -138,6 +140,10 @@ class ThordataClient:
 
         self._api_session = requests.Session()
         self._api_session.trust_env = True
+
+        self._api_session.headers.update(
+            {"User-Agent": build_user_agent(_sdk_version, "requests")}
+        )
 
         # Base URLs (allow override via args or env vars for testing and custom routing)
         scraperapi_base = (

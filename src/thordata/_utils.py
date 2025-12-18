@@ -124,3 +124,21 @@ def extract_error_message(payload: Any) -> str:
         return str(payload)
 
     return str(payload)
+
+
+def build_user_agent(sdk_version: str, http_client: str) -> str:
+    """
+    Build a default User-Agent for the SDK.
+
+    Args:
+        sdk_version: SDK version string.
+        http_client: "requests" or "aiohttp" (or any identifier).
+
+    Returns:
+        A User-Agent string.
+    """
+    import platform
+
+    py = platform.python_version()
+    system = platform.system()
+    return f"thordata-python-sdk/{sdk_version} (python {py}; {system}; {http_client})"
