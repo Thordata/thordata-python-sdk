@@ -140,8 +140,7 @@ def demo_advanced_search(scraper_token: str) -> None:
         num=10,
         country="us",
         language="en",
-        time_filter="week",
-        safe_search=True,
+        extra_params={"so": "1"},  # sort by date per docs
     )
 
     print(f"   Query: {request.query}")
