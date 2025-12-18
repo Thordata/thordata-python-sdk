@@ -564,6 +564,11 @@ class AsyncThordataClient:
     async def get_task_status(self, task_id: str) -> str:
         """
         Check async task status.
+
+        Raises:
+            ThordataConfigError: If public credentials are missing.
+            ThordataAPIError: If API returns a non-200 code in JSON payload.
+            ThordataNetworkError: If network/HTTP request fails.
         """
         self._require_public_credentials()
         session = self._get_session()
@@ -577,17 +582,50 @@ class AsyncThordataClient:
             async with session.post(
                 self._status_url, data=payload, headers=headers
             ) as response:
+                response.raise_for_status()
                 data = await response.json()
 
-                if data.get("code") == 200 and data.get("data"):
-                    for item in data["data"]:
+                if isinstance(data, dict):
+                    code = data.get("code")
+                    if code is not None and code != 200:
+                        msg = extract_error_message(data)
+                        raise_for_code(
+                            f"Task status API Error: {msg}",
+                            code=code,
+                            payload=data,
+                        )
+
+                    items = data.get("data") or []
+                    for item in items:
                         if str(item.get("task_id")) == str(task_id):
                             return item.get("status", "unknown")
 
-                return "unknown"
+                    return "unknown"
 
-        except Exception as e:
-            logger.error(f"Async status check failed: {e}")
+                raise ThordataNetworkError(
+                    f"Unexpected task status response type: {type(data).__name__}",
+                    original_error=None,
+                )
+
+        except asyncio.TimeoutError as e:
+            raise ThordataTimeoutError(
+                f"Async status check timed out: {e}", original_error=e
+            )
+        except aiohttp.ClientError as e:
+            raise ThordataNetworkError(
+                f"Async status check failed: {e}", original_error=e
+            )
+
+    async def safe_get_task_status(self, task_id: str) -> str:
+        """
+        Backward-compatible status check.
+
+        Returns:
+            Status string, or "error" on any exception.
+        """
+        try:
+            return await self.get_task_status(task_id)
+        except Exception:
             return "error"
 
     async def get_task_result(self, task_id: str, file_type: str = "json") -> str:
@@ -632,9 +670,12 @@ class AsyncThordataClient:
         """
         Wait for a task to complete.
         """
-        elapsed = 0.0
 
-        while elapsed < max_wait:
+        import time
+
+        start = time.monotonic()
+
+        while (time.monotonic() - start) < max_wait:
             status = await self.get_task_status(task_id)
 
             logger.debug(f"Task {task_id} status: {status}")
@@ -652,7 +693,6 @@ class AsyncThordataClient:
                 return status
 
             await asyncio.sleep(poll_interval)
-            elapsed += poll_interval
 
         raise TimeoutError(f"Task {task_id} did not complete within {max_wait} seconds")
 
