@@ -1,150 +1,142 @@
 """
-High-Concurrency Async Demo
+Async Concurrency Demo (Offline-test friendly)
 
 Demonstrates:
 - AsyncThordataClient usage
 - Parallel requests with asyncio.gather
-- Performance measurement
+- Basic performance measurement
 - Error handling in concurrent context
+
+Notes:
+- This demo uses the SERP API to make concurrent calls.
+- For CI/offline testing, set THORDATA_SCRAPERAPI_BASE_URL to a local mock server.
+
+Environment variables:
+- THORDATA_SCRAPER_TOKEN (required)
+- THORDATA_CONCURRENCY (optional, default: 10)
+- THORDATA_DEMO_QUERY (optional, default: "python")
 
 Usage:
     python examples/async_high_concurrency.py
 """
+
+from __future__ import annotations
 
 import asyncio
 import logging
 import os
 import sys
 import time
+from typing import Any, Dict
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
 
-from thordata import (
-    AsyncThordataClient,
-    ThordataError,
-    ThordataNetworkError,
-    ThordataTimeoutError,
-)
+from thordata import AsyncThordataClient, ThordataError
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 
-load_dotenv()
 
-SCRAPER_TOKEN = os.getenv("THORDATA_SCRAPER_TOKEN")
-
-if not SCRAPER_TOKEN:
-    print("❌ Error: THORDATA_SCRAPER_TOKEN is missing in .env")
-    sys.exit(1)
-
-# Number of concurrent requests
-CONCURRENCY = 10
+def _configure_stdio() -> None:
+    # Avoid UnicodeEncodeError on Windows consoles with legacy encodings.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
-async def fetch_ip(client: AsyncThordataClient, request_id: int) -> dict:
-    """Fetch IP through proxy, return result dict."""
-    url = "https://httpbin.org/ip"
+def _load_env() -> None:
+    if load_dotenv is not None:
+        load_dotenv()
 
+
+def _get_concurrency() -> int:
     try:
-        response = await client.get(url)
-        data = await response.json()
-        ip = data.get("origin", "Unknown")
+        return max(1, int(os.getenv("THORDATA_CONCURRENCY", "10")))
+    except ValueError:
+        return 10
 
-        return {
-            "id": request_id,
-            "status": "success",
-            "ip": ip,
-        }
 
-    except ThordataTimeoutError:
-        return {"id": request_id, "status": "timeout", "ip": None}
-    except ThordataNetworkError as e:
-        return {"id": request_id, "status": f"network_error: {e}", "ip": None}
+async def _serp_once(
+    client: AsyncThordataClient, query: str, request_id: int
+) -> Dict[str, Any]:
+    try:
+        data = await client.serp_search(query=query, num=3, engine="google")
+        organic = data.get("organic", [])
+        return {"id": request_id, "status": "success", "organic_count": len(organic)}
     except ThordataError as e:
-        return {"id": request_id, "status": f"error: {e}", "ip": None}
+        return {"id": request_id, "status": f"thordata_error: {e}", "organic_count": 0}
     except Exception as e:
-        return {"id": request_id, "status": f"unexpected: {e}", "ip": None}
+        return {"id": request_id, "status": f"unexpected: {e}", "organic_count": 0}
 
 
-async def demo_concurrent_requests():
-    """Run multiple concurrent requests."""
+async def demo_concurrent_serp(scraper_token: str) -> None:
+    concurrency = _get_concurrency()
+    query = os.getenv("THORDATA_DEMO_QUERY", "python")
+
     print("\n" + "=" * 50)
-    print(f"🚀 Launching {CONCURRENCY} Concurrent Requests")
+    print(f"Launching {concurrency} concurrent SERP requests")
     print("=" * 50)
 
     start_time = time.perf_counter()
 
-    async with AsyncThordataClient(scraper_token=SCRAPER_TOKEN) as client:
-        # Create tasks
-        tasks = [fetch_ip(client, i + 1) for i in range(CONCURRENCY)]
-
-        # Execute all concurrently
+    async with AsyncThordataClient(scraper_token=scraper_token) as client:
+        tasks = [
+            _serp_once(client, query=query, request_id=i + 1)
+            for i in range(concurrency)
+        ]
         results = await asyncio.gather(*tasks)
 
     elapsed = time.perf_counter() - start_time
 
-    # Display results
-    print("\n📊 Results:")
-    success_count = 0
-    unique_ips = set()
+    success_count = sum(1 for r in results if r["status"] == "success")
+    counts = [r["organic_count"] for r in results if r["status"] == "success"]
 
-    for result in results:
-        status_icon = "✅" if result["status"] == "success" else "❌"
-        ip_display = result["ip"] or result["status"]
-        print(f"   {status_icon} Request {result['id']:2d}: {ip_display}")
+    print("\nResults:")
+    for r in results[: min(10, len(results))]:
+        # Print only first 10 lines to keep output readable
+        print(f"  Request {r['id']:02d}: {r['status']} (organic={r['organic_count']})")
 
-        if result["status"] == "success":
-            success_count += 1
-            unique_ips.add(result["ip"])
-
-    # Summary
     print("\n" + "-" * 50)
-    print("📈 Summary:")
-    print(f"   Total requests:    {CONCURRENCY}")
-    print(f"   Successful:        {success_count}")
-    print(f"   Failed:            {CONCURRENCY - success_count}")
-    print(f"   Unique IPs:        {len(unique_ips)}")
-    print(f"   Total time:        {elapsed:.2f}s")
-    print(f"   Requests/second:   {CONCURRENCY / elapsed:.1f}")
+    print("Summary:")
+    print(f"  Total requests:  {concurrency}")
+    print(f"  Successful:      {success_count}")
+    print(f"  Failed:          {concurrency - success_count}")
+    print(
+        f"  Avg organic:     {(sum(counts) / len(counts)):.2f}"
+        if counts
+        else "  Avg organic:     N/A"
+    )
+    print(f"  Total time:      {elapsed:.2f}s")
+    print(
+        f"  Requests/second: {(concurrency / elapsed):.2f}"
+        if elapsed > 0
+        else "  Requests/second: N/A"
+    )
 
 
-async def demo_serp_concurrent():
-    """Concurrent SERP searches."""
-    print("\n" + "=" * 50)
-    print("🔍 Concurrent SERP Searches")
+def main() -> int:
+    _configure_stdio()
+    _load_env()
+
+    scraper_token = os.getenv("THORDATA_SCRAPER_TOKEN")
+    if not scraper_token:
+        print("Error: THORDATA_SCRAPER_TOKEN is missing.")
+        return 1
+
+    print("=" * 50)
+    print("Thordata SDK - Async Concurrency Demo")
     print("=" * 50)
 
-    queries = ["python", "javascript", "rust", "golang", "typescript"]
+    asyncio.run(demo_concurrent_serp(scraper_token))
 
-    async with AsyncThordataClient(scraper_token=SCRAPER_TOKEN) as client:
-
-        async def search(query: str) -> dict:
-            try:
-                results = await client.serp_search(query=query, num=3)
-                count = len(results.get("organic", []))
-                return {"query": query, "results": count, "status": "success"}
-            except Exception as e:
-                return {"query": query, "results": 0, "status": str(e)}
-
-        start = time.perf_counter()
-        results = await asyncio.gather(*[search(q) for q in queries])
-        elapsed = time.perf_counter() - start
-
-    print("\n📊 Search Results:")
-    for r in results:
-        icon = "✅" if r["status"] == "success" else "❌"
-        print(f"   {icon} '{r['query']}': {r['results']} results")
-
-    print(f"\n   Total time: {elapsed:.2f}s")
+    print("\n" + "=" * 50)
+    print("Demo complete.")
+    print("=" * 50)
+    return 0
 
 
 if __name__ == "__main__":
-    print("=" * 50)
-    print("   Thordata SDK - Async High Concurrency Demo")
-    print("=" * 50)
-
-    asyncio.run(demo_concurrent_requests())
-    asyncio.run(demo_serp_concurrent())
-
-    print("\n" + "=" * 50)
-    print("   Demo Complete!")
-    print("=" * 50)
+    raise SystemExit(main())
