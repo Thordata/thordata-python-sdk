@@ -62,33 +62,90 @@ class ProxyPort(IntEnum):
 class Engine(str, Enum):
     """
     Supported search engines for SERP API.
+
+    Engine naming convention:
+    - Base search: {engine} for basic web search (google, bing, yandex, duckduckgo)
+    - Verticals: {engine}_{vertical} (e.g., google_news, bing_images)
+    - Sub-verticals: {engine}_{vertical}_{sub} (e.g., google_scholar_cite)
     """
 
+    # ===================
+    # Google
+    # ===================
     GOOGLE = "google"
+    GOOGLE_SEARCH = "google_search"
+    GOOGLE_AI_MODE = "google_ai_mode"
+    GOOGLE_WEB = "google_web"
+    GOOGLE_SHOPPING = "google_shopping"
+    GOOGLE_LOCAL = "google_local"
+    GOOGLE_VIDEOS = "google_videos"
+    GOOGLE_NEWS = "google_news"
+    GOOGLE_FLIGHTS = "google_flights"
+    GOOGLE_IMAGES = "google_images"
+    GOOGLE_LENS = "google_lens"
+    GOOGLE_TRENDS = "google_trends"
+    GOOGLE_HOTELS = "google_hotels"
+    GOOGLE_PLAY = "google_play"
+    GOOGLE_JOBS = "google_jobs"
+    GOOGLE_SCHOLAR = "google_scholar"
+    GOOGLE_SCHOLAR_CITE = "google_scholar_cite"
+    GOOGLE_SCHOLAR_AUTHOR = "google_scholar_author"
+    GOOGLE_MAPS = "google_maps"
+    GOOGLE_FINANCE = "google_finance"
+    GOOGLE_FINANCE_MARKETS = "google_finance_markets"
+    GOOGLE_PATENTS = "google_patents"
+    GOOGLE_PATENTS_DETAILS = "google_patents_details"
+
+    # ===================
+    # Bing
+    # ===================
     BING = "bing"
+    BING_SEARCH = "bing_search"
+    BING_IMAGES = "bing_images"
+    BING_VIDEOS = "bing_videos"
+    BING_NEWS = "bing_news"
+    BING_MAPS = "bing_maps"
+    BING_SHOPPING = "bing_shopping"
+
+    # ===================
+    # Yandex
+    # ===================
     YANDEX = "yandex"
+    YANDEX_SEARCH = "yandex_search"
+
+    # ===================
+    # DuckDuckGo
+    # ===================
     DUCKDUCKGO = "duckduckgo"
-    BAIDU = "baidu"
-    YAHOO = "yahoo"
-    NAVER = "naver"
+    DUCKDUCKGO_SEARCH = "duckduckgo_search"
 
 
 class GoogleSearchType(str, Enum):
     """
     Search types specific to Google.
+
+    These map to the second part of Google engine names.
+    For example, GOOGLE + NEWS = google_news
     """
 
     SEARCH = "search"
-    MAPS = "maps"
+    AI_MODE = "ai_mode"
+    WEB = "web"
     SHOPPING = "shopping"
-    NEWS = "news"
-    IMAGES = "images"
+    LOCAL = "local"
     VIDEOS = "videos"
-    SCHOLAR = "scholar"
-    PATENTS = "patents"
-    JOBS = "jobs"
+    NEWS = "news"
     FLIGHTS = "flights"
+    IMAGES = "images"
+    LENS = "lens"
+    TRENDS = "trends"
+    HOTELS = "hotels"
+    PLAY = "play"
+    JOBS = "jobs"
+    SCHOLAR = "scholar"
+    MAPS = "maps"
     FINANCE = "finance"
+    PATENTS = "patents"
 
 
 class BingSearchType(str, Enum):
@@ -101,6 +158,20 @@ class BingSearchType(str, Enum):
     VIDEOS = "videos"
     NEWS = "news"
     MAPS = "maps"
+    SHOPPING = "shopping"
+
+
+class GoogleTbm(str, Enum):
+    """
+    Google tbm (to be matched) parameter values.
+
+    Only available when using specific Google engines that support tbm.
+    """
+
+    NEWS = "nws"
+    SHOPPING = "shop"
+    IMAGES = "isch"
+    VIDEOS = "vid"
 
 
 class Device(str, Enum):
@@ -159,13 +230,12 @@ class SessionType(str, Enum):
 class OutputFormat(str, Enum):
     """
     Output formats for Universal Scraping API.
+
+    Currently supported: html, png
     """
 
     HTML = "html"
     PNG = "png"
-    PDF = "pdf"
-    MARKDOWN = "markdown"
-    TEXT = "text"
 
 
 class DataFormat(str, Enum):
@@ -222,7 +292,7 @@ class TaskStatus(str, Enum):
 
 
 # =============================================================================
-# Country Enum (常用国家)
+# Country Enum (Common Countries)
 # =============================================================================
 
 
@@ -306,7 +376,6 @@ def normalize_enum_value(value: object, enum_class: type) -> str:
     Safely convert an enum or string to its string value.
     """
     if isinstance(value, enum_class):
-        # value is an enum member, get its .value
         return str(getattr(value, "value", value)).lower()
     if isinstance(value, str):
         return value.lower()
