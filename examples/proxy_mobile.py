@@ -6,26 +6,24 @@ Usage:
 """
 
 import os
-import sys
 
+import requests
 from dotenv import load_dotenv
+
+from thordata import ProxyConfig, ProxyProduct
 
 load_dotenv()
 
 USERNAME = os.getenv("THORDATA_MOBILE_USERNAME")
 PASSWORD = os.getenv("THORDATA_MOBILE_PASSWORD")
 
-if not USERNAME or not PASSWORD:
-    print("Mobile Proxy Demo - Skipped")
-    print("Set THORDATA_MOBILE_USERNAME and THORDATA_MOBILE_PASSWORD in .env")
-    sys.exit(0)
-
-import requests
-
-from thordata import ProxyConfig, ProxyProduct
-
 
 def main():
+    if not USERNAME or not PASSWORD:
+        print("Mobile Proxy Demo - Skipped")
+        print("Set THORDATA_MOBILE_USERNAME and THORDATA_MOBILE_PASSWORD in .env")
+        return
+
     print("Mobile Proxy Demo\n")
 
     proxy = ProxyConfig(

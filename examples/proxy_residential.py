@@ -10,24 +10,25 @@ Usage:
 import os
 import sys
 
+import requests
 from dotenv import load_dotenv
+
+from thordata import ProxyConfig, ProxyProduct, StickySession
 
 load_dotenv()
 
 USERNAME = os.getenv("THORDATA_RESIDENTIAL_USERNAME")
 PASSWORD = os.getenv("THORDATA_RESIDENTIAL_PASSWORD")
 
-if not USERNAME or not PASSWORD:
-    print("Residential Proxy Demo - Skipped")
-    print("Set THORDATA_RESIDENTIAL_USERNAME and THORDATA_RESIDENTIAL_PASSWORD in .env")
-    sys.exit(0)
-
-import requests
-
-from thordata import ProxyConfig, ProxyProduct, StickySession
-
 
 def main():
+    if not USERNAME or not PASSWORD:
+        print("Residential Proxy Demo - Skipped")
+        print(
+            "Set THORDATA_RESIDENTIAL_USERNAME and THORDATA_RESIDENTIAL_PASSWORD in .env"
+        )
+        return
+
     print("Residential Proxy Demo\n")
 
     # Basic geo-targeted request

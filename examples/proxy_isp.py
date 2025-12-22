@@ -8,9 +8,11 @@ Usage:
 """
 
 import os
-import sys
 
+import requests
 from dotenv import load_dotenv
+
+from thordata import StaticISPProxy
 
 load_dotenv()
 
@@ -18,19 +20,15 @@ HOST = os.getenv("THORDATA_ISP_HOST")
 USERNAME = os.getenv("THORDATA_ISP_USERNAME")
 PASSWORD = os.getenv("THORDATA_ISP_PASSWORD")
 
-if not HOST or not USERNAME or not PASSWORD:
-    print("Static ISP Proxy Demo - Skipped")
-    print(
-        "Set THORDATA_ISP_HOST, THORDATA_ISP_USERNAME, and THORDATA_ISP_PASSWORD in .env"
-    )
-    sys.exit(0)
-
-import requests
-
-from thordata import StaticISPProxy
-
 
 def main():
+    if not HOST or not USERNAME or not PASSWORD:
+        print("Static ISP Proxy Demo - Skipped")
+        print(
+            "Set THORDATA_ISP_HOST, THORDATA_ISP_USERNAME, and THORDATA_ISP_PASSWORD in .env"
+        )
+        return
+
     print("Static ISP Proxy Demo\n")
 
     proxy = StaticISPProxy(
