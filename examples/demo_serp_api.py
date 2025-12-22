@@ -26,14 +26,9 @@ try:
 except ImportError:
     load_dotenv = None
 
-from thordata import (
-    AsyncThordataClient,
-    Engine,
-    SerpRequest,
-    ThordataAuthError,
-    ThordataClient,
-    ThordataRateLimitError,
-)
+from thordata import (AsyncThordataClient, Engine, SerpRequest,
+                      ThordataAuthError, ThordataClient,
+                      ThordataRateLimitError)
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 

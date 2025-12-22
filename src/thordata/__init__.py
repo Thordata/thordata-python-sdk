@@ -42,50 +42,20 @@ __email__ = "support@thordata.com"
 # Main clients
 from .async_client import AsyncThordataClient
 from .client import ThordataClient
-
 # Enums
-from .enums import (
-    BingSearchType,
-    Continent,
-    Country,
-    DataFormat,
-    Device,
-    Engine,
-    GoogleSearchType,
-    OutputFormat,
-    ProxyHost,
-    ProxyPort,
-    ProxyType,
-    SessionType,
-    TaskStatus,
-    TimeRange,
-)
-
+from .enums import (BingSearchType, Continent, Country, DataFormat, Device,
+                    Engine, GoogleSearchType, OutputFormat, ProxyHost,
+                    ProxyPort, ProxyType, SessionType, TaskStatus, TimeRange)
 # Exceptions
-from .exceptions import (
-    ThordataAPIError,
-    ThordataAuthError,
-    ThordataConfigError,
-    ThordataError,
-    ThordataNetworkError,
-    ThordataNotCollectedError,
-    ThordataRateLimitError,
-    ThordataServerError,
-    ThordataTimeoutError,
-    ThordataValidationError,
-)
-
+from .exceptions import (ThordataAPIError, ThordataAuthError,
+                         ThordataConfigError, ThordataError,
+                         ThordataNetworkError, ThordataNotCollectedError,
+                         ThordataRateLimitError, ThordataServerError,
+                         ThordataTimeoutError, ThordataValidationError)
 # Models
-from .models import (
-    ProxyConfig,
-    ProxyProduct,
-    ScraperTaskConfig,
-    SerpRequest,
-    StickySession,
-    TaskStatusResponse,
-    UniversalScrapeRequest,
-)
-
+from .models import (ProxyConfig, ProxyProduct, ScraperTaskConfig, SerpRequest,
+                     StaticISPProxy, StickySession, TaskStatusResponse,
+                     UniversalScrapeRequest)
 # Retry utilities
 from .retry import RetryConfig
 
@@ -114,6 +84,7 @@ __all__ = [
     # Models
     "ProxyConfig",
     "ProxyProduct",
+    "StaticISPProxy",
     "StickySession",
     "SerpRequest",
     "UniversalScrapeRequest",

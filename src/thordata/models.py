@@ -135,9 +135,14 @@ class ProxyConfig:
 
         # Set default host and port based on product
         if self.host is None:
-            # Extract user prefix from username if available
-            # Default to generic host
-            self.host = "pr.thordata.net"
+            # Set host based on product type
+            host_map = {
+                ProxyProduct.RESIDENTIAL: "t.pr.thordata.net",
+                ProxyProduct.DATACENTER: "dc.pr.thordata.net",
+                ProxyProduct.MOBILE: "m.pr.thordata.net",
+                ProxyProduct.ISP: "isp.pr.thordata.net",
+            }
+            self.host = host_map.get(self.product, "pr.thordata.net")
 
         if self.port is None:
             self.port = self.product.default_port
@@ -257,6 +262,114 @@ class ProxyConfig:
             raise ImportError(
                 "aiohttp is required for async proxy configuration"
             ) from e
+
+
+@dataclass
+class StaticISPProxy:
+    """
+    Configuration for static ISP proxy with direct IP connection.
+
+    Static ISP proxies connect directly to a purchased IP address,
+    not through the gateway.
+
+    Args:
+        host: The static IP address you purchased.
+        username: Your ISP proxy username.
+        password: Your ISP proxy password.
+        port: Port number (default: 6666).
+        protocol: Proxy protocol - 'http' or 'https'.
+
+    Example:
+        >>> proxy = StaticISPProxy(
+        ...     host="38.213.208.238",
+        ...     username="myuser",
+        ...     password="mypass"
+        ... )
+        >>> print(proxy.build_proxy_url())
+        http://myuser:mypass@38.213.208.238:6666
+    """
+
+    host: str
+    username: str
+    password: str
+    port: int = 6666
+    protocol: str = "http"
+
+    def __post_init__(self) -> None:
+        """Validate configuration."""
+        if self.protocol not in ("http", "https"):
+            raise ValueError(
+                f"Invalid protocol: {self.protocol}. Must be 'http' or 'https'."
+            )
+
+    def build_proxy_url(self) -> str:
+        """
+        Build the complete proxy URL for direct connection.
+
+        Returns:
+            The formatted proxy URL.
+        """
+        return (
+            f"{self.protocol}://{self.username}:{self.password}@{self.host}:{self.port}"
+        )
+
+    def to_proxies_dict(self) -> Dict[str, str]:
+        """
+        Build a proxies dict suitable for the requests library.
+
+        Returns:
+            Dict with 'http' and 'https' keys pointing to the proxy URL.
+        """
+        url = self.build_proxy_url()
+        return {"http": url, "https": url}
+
+    def to_aiohttp_config(self) -> tuple:
+        """
+        Get proxy configuration for aiohttp.
+
+        Returns:
+            Tuple of (proxy_url, proxy_auth) for aiohttp.
+        """
+        try:
+            import aiohttp
+
+            proxy_url = f"{self.protocol}://{self.host}:{self.port}"
+            proxy_auth = aiohttp.BasicAuth(login=self.username, password=self.password)
+            return proxy_url, proxy_auth
+        except ImportError as e:
+            raise ImportError(
+                "aiohttp is required for async proxy configuration"
+            ) from e
+
+    @classmethod
+    def from_env(cls) -> "StaticISPProxy":
+        """
+        Create StaticISPProxy from environment variables.
+
+        Required env vars:
+            - THORDATA_ISP_HOST
+            - THORDATA_ISP_USERNAME
+            - THORDATA_ISP_PASSWORD
+
+        Returns:
+            Configured StaticISPProxy instance.
+
+        Raises:
+            ValueError: If required environment variables are missing.
+        """
+        import os
+
+        host = os.getenv("THORDATA_ISP_HOST")
+        username = os.getenv("THORDATA_ISP_USERNAME")
+        password = os.getenv("THORDATA_ISP_PASSWORD")
+
+        if not all([host, username, password]):
+            raise ValueError(
+                "THORDATA_ISP_HOST, THORDATA_ISP_USERNAME, and "
+                "THORDATA_ISP_PASSWORD are required"
+            )
+
+        return cls(host=host, username=username, password=password)
 
 
 @dataclass

@@ -30,27 +30,14 @@ from typing import Any, Dict, List, Optional, Union
 import aiohttp
 
 from . import __version__ as _sdk_version
-from ._utils import (
-    build_auth_headers,
-    build_public_api_headers,
-    build_user_agent,
-    decode_base64_image,
-    extract_error_message,
-    parse_json_response,
-)
+from ._utils import (build_auth_headers, build_public_api_headers,
+                     build_user_agent, decode_base64_image,
+                     extract_error_message, parse_json_response)
 from .enums import Engine, ProxyType
-from .exceptions import (
-    ThordataConfigError,
-    ThordataNetworkError,
-    ThordataTimeoutError,
-    raise_for_code,
-)
-from .models import (
-    ProxyConfig,
-    ScraperTaskConfig,
-    SerpRequest,
-    UniversalScrapeRequest,
-)
+from .exceptions import (ThordataConfigError, ThordataNetworkError,
+                         ThordataTimeoutError, raise_for_code)
+from .models import (ProxyConfig, ScraperTaskConfig, SerpRequest,
+                     UniversalScrapeRequest)
 from .retry import RetryConfig
 
 logger = logging.getLogger(__name__)
