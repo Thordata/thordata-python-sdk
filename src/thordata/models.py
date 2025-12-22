@@ -281,12 +281,12 @@ class StaticISPProxy:
 
     Example:
         >>> proxy = StaticISPProxy(
-        ...     host="38.213.208.238",
+        ...     host="xx.xxx.xxx.xxx",
         ...     username="myuser",
         ...     password="mypass"
         ... )
         >>> print(proxy.build_proxy_url())
-        http://myuser:mypass@38.213.208.238:6666
+        http://myuser:mypass@xx.xxx.xxx.xxx:6666
     """
 
     host: str

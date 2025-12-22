@@ -23,8 +23,12 @@ from dataclasses import dataclass, field
 from functools import wraps
 from typing import Any, Callable, Optional, Set, Tuple
 
-from .exceptions import (ThordataNetworkError, ThordataRateLimitError,
-                         ThordataServerError, is_retryable_exception)
+from .exceptions import (
+    ThordataNetworkError,
+    ThordataRateLimitError,
+    ThordataServerError,
+    is_retryable_exception,
+)
 
 logger = logging.getLogger(__name__)
 

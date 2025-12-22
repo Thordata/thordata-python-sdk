@@ -163,28 +163,120 @@ for i in range(5):
     print(f"Request {i+1}: {response.json()['origin']}")
 ```
 
-#### Different Proxy Products
+#### Proxy Credentials
+
+Each proxy product requires **separate credentials** from Thordata Dashboard:
+
+```env
+# Residential Proxy (port 9999)
+THORDATA_RESIDENTIAL_USERNAME=your_residential_username
+THORDATA_RESIDENTIAL_PASSWORD=your_residential_password
+
+# Datacenter Proxy (port 7777)
+THORDATA_DATACENTER_USERNAME=your_datacenter_username
+THORDATA_DATACENTER_PASSWORD=your_datacenter_password
+
+# Mobile Proxy (port 5555)
+THORDATA_MOBILE_USERNAME=your_mobile_username
+THORDATA_MOBILE_PASSWORD=your_mobile_password
+
+# Static ISP Proxy (port 6666, direct IP connection)
+THORDATA_ISP_HOST=your_static_ip_address
+THORDATA_ISP_USERNAME=your_isp_username
+THORDATA_ISP_PASSWORD=your_isp_password
+```
+
+#### Residential Proxy
 
 ```python
 from thordata import ProxyConfig, ProxyProduct
 
-# Residential proxy (default, port 9999)
-residential = ProxyConfig(
-    username="user", password="pass",
-    product=ProxyProduct.RESIDENTIAL
+proxy = ProxyConfig(
+    username="your_username",
+    password="your_password",
+    product=ProxyProduct.RESIDENTIAL,
+    country="us",
 )
 
-# Mobile proxy (port 5555)
-mobile = ProxyConfig(
-    username="user", password="pass",
-    product=ProxyProduct.MOBILE
+response = requests.get(
+    "http://httpbin.org/ip",
+    proxies=proxy.to_proxies_dict(),
+)
+print(response.json())
+```
+
+#### Datacenter Proxy
+
+```python
+proxy = ProxyConfig(
+    username="your_username",
+    password="your_password",
+    product=ProxyProduct.DATACENTER,
+)
+```
+
+#### Mobile Proxy
+
+```python
+proxy = ProxyConfig(
+    username="your_username",
+    password="your_password",
+    product=ProxyProduct.MOBILE,
+    country="gb",
+)
+```
+
+#### Static ISP Proxy
+
+Static ISP proxies connect directly to your purchased IP address:
+
+```python
+from thordata import StaticISPProxy
+
+proxy = StaticISPProxy(
+    host="your_static_ip_address",  # Your purchased IP
+    username="your_username",
+    password="your_password",
 )
 
-# Datacenter proxy (port 7777)
-datacenter = ProxyConfig(
-    username="user", password="pass",
-    product=ProxyProduct.DATACENTER
+response = requests.get(
+    "http://httpbin.org/ip",
+    proxies=proxy.to_proxies_dict(),
 )
+# Returns your purchased static IP
+```
+
+#### Proxy Examples
+
+```bash
+python examples/proxy_residential.py
+python examples/proxy_datacenter.py
+python examples/proxy_mobile.py
+python examples/proxy_isp.py
+```
+
+### Run All Examples
+
+```bash
+# SERP API examples
+python examples/demo_serp_api.py
+python examples/demo_serp_google_news.py
+
+# Universal API examples
+python examples/demo_universal.py
+python examples/demo_scraping_browser.py
+
+# Web Scraper API examples
+python examples/demo_web_scraper_api.py
+
+# Proxy Network examples
+python examples/proxy_residential.py
+python examples/proxy_datacenter.py
+python examples/proxy_mobile.py
+python examples/proxy_isp.py
+
+# Async high concurrency example
+python examples/async_high_concurrency.py
 ```
 
 ### 2. SERP API (Search Engine Results)
@@ -403,8 +495,8 @@ local_results = results.get("local_results", results.get("organic", []))
 | google_domain | google_domain | Domain |
 | gl | country | Country |
 | hl | language | Language |
-| location | location | Local location |
-| uule | uule | Encoded location |
+| location location |
+| u | location | Localule | uule | Encoded location |
 | start | start | Offset (must be 0,20,40...) |
 | ludocid | ludocid | Place ID (commonly used in Local results) |
 | tbs | time_filter or tbs="..." | Advanced filtering |
@@ -775,11 +867,65 @@ thordata-python-sdk/
 │   ├── enums.py            # Enumerations
 │   ├── exceptions.py       # Exception hierarchy
 │   ├── retry.py            # Retry mechanism
+│   ├── parameters.py       # Parameter definitions
+│   ├── demo.py             # Demo functionality
 │   └── _utils.py           # Internal utilities
-├── tests/                   # Test suite
-├── examples/                # Usage examples
-├── pyproject.toml          # Package configuration
-└── README.md
+├── tests/
+│   ├── __init__.py         # Test initialization
+│   ├── conftest.py         # Pytest configuration
+│   ├── test_client.py      # Client tests
+│   ├── test_async_client.py # Async client tests
+│   ├── test_client_errors.py # Client error tests
+│   ├── test_async_client_errors.py # Async client error tests
+│   ├── test_enums.py       # Enums tests
+│   ├── test_models.py      # Models tests
+│   ├── test_exceptions.py  # Exceptions tests
+│   ├── test_demo_entrypoint.py # Demo entrypoint tests
+│   ├── test_task_status_and_wait.py # Task status tests
+│   ├── test_user_agent.py  # User agent tests
+│   ├── test_examples_demo_serp_api.py # SERP API examples tests
+│   ├── test_examples_demo_universal.py # Universal API examples tests
+│   ├── test_examples_demo_web_scraper_api.py # Web scraper examples tests
+│   └── test_examples_async_high_concurrency.py # Async high concurrency tests
+├── examples/
+│   ├── demo_serp_api.py            # SERP API demo
+│   ├── demo_serp_google_news.py    # Google News demo
+│   ├── demo_universal.py           # Universal API demo
+│   ├── demo_web_scraper_api.py     # Web scraper demo
+│   ├── demo_scraping_browser.py    # Scraping browser demo
+│   ├── async_high_concurrency.py   # Async high concurrency demo
+│   ├── proxy_residential.py        # Residential proxy example
+│   ├── proxy_datacenter.py         # Datacenter proxy example
+│   ├── proxy_mobile.py             # Mobile proxy example
+│   ├── proxy_isp.py                # Static ISP proxy example
+│   └── .env.example                # Environment variables template
+├── docs/
+│   ├── serp_reference.md           # SERP API reference
+│   ├── serp_reference_legacy.md    # Legacy SERP reference
+│   └── universal_reference.md      # Universal API reference
+├── .github/
+│   ├── dependabot.yml              # Dependabot configuration
+│   ├── pull_request_template.md    # PR template
+│   ├── ISSUE_TEMPLATE/
+│   │   ├── bug_report.md           # Bug report template
+│   │   └── feature_request.md      # Feature request template
+│   └── workflows/
+│       ├── ci.yml                  # Continuous integration
+│       └── pypi-publish.yml        # PyPI publishing workflow
+├── .env.example                    # Environment variables template
+├── .prettierrc                     # Prettier configuration
+├── .prettierignore                 # Prettier ignore patterns
+├── eslint.config.cjs               # ESLint configuration
+├── LICENSE                         # License file
+├── package.json                    # Package configuration
+├── py.typed                        # Type hints marker
+├── pyproject.toml                  # Python package configuration
+├── pytest.ini                     # Pytest configuration
+├── requirements.txt                # Python dependencies
+├── tsconfig.json                   # TypeScript configuration
+├── tsconfig.build.json             # TypeScript build configuration
+├── vitest.config.ts                # Vitest testing configuration
+└── README.md                       # This file
 ```
 
 ---
