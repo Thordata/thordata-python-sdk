@@ -262,8 +262,17 @@ def raise_for_code(
         ThordataValidationError: For 400/422 codes.
         ThordataAPIError: For all other error codes.
     """
-    # Use the code from payload if status_code not available
-    effective_code = status_code or code
+    # Determine the effective error code.
+    # Prefer payload `code` when present and not success (200),
+    # otherwise fall back to HTTP status when it indicates an error.
+    effective_code: Optional[int] = None
+
+    if code is not None and code != 200:
+        effective_code = code
+    elif status_code is not None and status_code != 200:
+        effective_code = status_code
+    else:
+        effective_code = code if code is not None else status_code
 
     kwargs = {
         "status_code": status_code,

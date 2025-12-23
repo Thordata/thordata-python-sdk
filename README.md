@@ -912,19 +912,13 @@ thordata-python-sdk/
 │   └── workflows/
 │       ├── ci.yml                  # Continuous integration
 │       └── pypi-publish.yml        # PyPI publishing workflow
-├── .env.example                    # Environment variables template
-├── .prettierrc                     # Prettier configuration
-├── .prettierignore                 # Prettier ignore patterns
-├── eslint.config.cjs               # ESLint configuration
 ├── LICENSE                         # License file
 ├── package.json                    # Package configuration
 ├── py.typed                        # Type hints marker
 ├── pyproject.toml                  # Python package configuration
 ├── pytest.ini                     # Pytest configuration
 ├── requirements.txt                # Python dependencies
-├── tsconfig.json                   # TypeScript configuration
-├── tsconfig.build.json             # TypeScript build configuration
-├── vitest.config.ts                # Vitest testing configuration
+├── CHANGELOG.md
 └── README.md                       # This file
 ```
 
@@ -971,6 +965,22 @@ ruff check src tests
 
 # Type check
 mypy src
+```
+
+### Git submodules
+
+This repository uses a git submodule (`sdk-spec`) for cross-SDK parity checks.
+
+After cloning, run:
+
+```bash
+git submodule update --init --recursive
+```
+
+Or clone with:
+
+```bash
+git clone --recurse-submodules <repo-url>
 ```
 
 ---
