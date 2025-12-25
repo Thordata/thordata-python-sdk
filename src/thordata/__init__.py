@@ -81,6 +81,7 @@ from .models import (
     CommonSettings,
     ProxyConfig,
     ProxyProduct,
+    ProxyServer,
     ProxyUser,
     ProxyUserList,
     ScraperTaskConfig,
@@ -122,6 +123,7 @@ __all__ = [
     # Models
     "ProxyConfig",
     "ProxyProduct",
+    "ProxyServer",
     "ProxyUser",
     "ProxyUserList",
     "UsageStatistics",

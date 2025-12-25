@@ -50,6 +50,7 @@ from .exceptions import (
 from .models import (
     CommonSettings,
     ProxyConfig,
+    ProxyServer,
     ProxyUser,
     ProxyUserList,
     ScraperTaskConfig,
@@ -172,6 +173,15 @@ class AsyncThordataClient:
         self._proxy_users_url = (
             f"{locations_base.replace('/locations', '')}/proxy-users"
         )
+        whitelist_base = os.getenv(
+            "THORDATA_WHITELIST_BASE_URL", "https://api.thordata.com/api"
+        )
+        self._whitelist_url = f"{whitelist_base}/whitelisted-ips"
+        proxy_api_base = os.getenv(
+            "THORDATA_PROXY_API_BASE_URL", "https://api.thordata.com/api"
+        )
+        self._proxy_list_url = f"{proxy_api_base}/proxy/proxy-list"
+        self._proxy_expiration_url = f"{proxy_api_base}/proxy/expiration-time"
         self._list_url = f"{web_scraper_api_base}/tasks-list"
 
         # Session initialized lazily
@@ -998,6 +1008,171 @@ class AsyncThordataClient:
         except aiohttp.ClientError as e:
             raise ThordataNetworkError(
                 f"Create user failed: {e}", original_error=e
+            ) from e
+
+    async def add_whitelist_ip(
+        self,
+        ip: str,
+        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL,
+        status: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Add an IP to the whitelist for IP authentication.
+        """
+        self._require_public_credentials()
+        session = self._get_session()
+
+        headers = build_public_api_headers(
+            self.public_token or "", self.public_key or ""
+        )
+
+        proxy_type_int = (
+            int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
+        )
+
+        payload = {
+            "proxy_type": str(proxy_type_int),
+            "ip": ip,
+            "status": "true" if status else "false",
+        }
+
+        logger.info(f"Async adding whitelist IP: {ip}")
+
+        try:
+            async with session.post(
+                f"{self._whitelist_url}/add-ip",
+                data=payload,
+                headers=headers,
+                timeout=self._api_timeout,
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+
+                code = data.get("code")
+                if code != 200:
+                    msg = extract_error_message(data)
+                    raise_for_code(
+                        f"Add whitelist IP failed: {msg}", code=code, payload=data
+                    )
+
+                return data.get("data", {})
+
+        except asyncio.TimeoutError as e:
+            raise ThordataTimeoutError(
+                f"Add whitelist timed out: {e}", original_error=e
+            ) from e
+        except aiohttp.ClientError as e:
+            raise ThordataNetworkError(
+                f"Add whitelist failed: {e}", original_error=e
+            ) from e
+
+    async def list_proxy_servers(
+        self,
+        proxy_type: int,
+    ) -> List[ProxyServer]:
+        """
+        List ISP or Datacenter proxy servers.
+        """
+
+        self._require_public_credentials()
+        session = self._get_session()
+
+        params = {
+            "token": self.public_token,
+            "key": self.public_key,
+            "proxy_type": str(proxy_type),
+        }
+
+        logger.info(f"Async listing proxy servers: type={proxy_type}")
+
+        try:
+            async with session.get(
+                self._proxy_list_url,
+                params=params,
+                timeout=self._api_timeout,
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+
+                if isinstance(data, dict):
+                    code = data.get("code")
+                    if code is not None and code != 200:
+                        msg = extract_error_message(data)
+                        raise_for_code(
+                            f"List proxy servers error: {msg}", code=code, payload=data
+                        )
+
+                    server_list = data.get("data", data.get("list", []))
+                elif isinstance(data, list):
+                    server_list = data
+                else:
+                    raise ThordataNetworkError(
+                        f"Unexpected proxy list response: {type(data).__name__}",
+                        original_error=None,
+                    )
+
+                return [ProxyServer.from_dict(s) for s in server_list]
+
+        except asyncio.TimeoutError as e:
+            raise ThordataTimeoutError(
+                f"List servers timed out: {e}", original_error=e
+            ) from e
+        except aiohttp.ClientError as e:
+            raise ThordataNetworkError(
+                f"List servers failed: {e}", original_error=e
+            ) from e
+
+    async def get_proxy_expiration(
+        self,
+        ips: Union[str, List[str]],
+        proxy_type: int,
+    ) -> Dict[str, Any]:
+        """
+        Get expiration time for specific proxy IPs.
+        """
+        self._require_public_credentials()
+        session = self._get_session()
+
+        if isinstance(ips, list):
+            ips = ",".join(ips)
+
+        params = {
+            "token": self.public_token,
+            "key": self.public_key,
+            "proxy_type": str(proxy_type),
+            "ips": ips,
+        }
+
+        logger.info(f"Async getting proxy expiration: {ips}")
+
+        try:
+            async with session.get(
+                self._proxy_expiration_url,
+                params=params,
+                timeout=self._api_timeout,
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+
+                if isinstance(data, dict):
+                    code = data.get("code")
+                    if code is not None and code != 200:
+                        msg = extract_error_message(data)
+                        raise_for_code(
+                            f"Get expiration error: {msg}", code=code, payload=data
+                        )
+
+                    return data.get("data", data)
+
+                return data
+
+        except asyncio.TimeoutError as e:
+            raise ThordataTimeoutError(
+                f"Get expiration timed out: {e}", original_error=e
+            ) from e
+        except aiohttp.ClientError as e:
+            raise ThordataNetworkError(
+                f"Get expiration failed: {e}", original_error=e
             ) from e
 
     async def wait_for_task(

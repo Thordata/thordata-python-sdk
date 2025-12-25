@@ -1073,3 +1073,62 @@ class ProxyUserList:
             user_count=int(data.get("user_count", len(users))),
             users=users,
         )
+
+
+@dataclass
+class ProxyServer:
+    """
+    ISP or Datacenter proxy server information.
+
+    Attributes:
+        ip: Proxy server IP address.
+        port: Proxy server port.
+        username: Authentication username.
+        password: Authentication password.
+        expiration_time: Expiration timestamp (Unix timestamp or datetime string).
+        region: Server region (optional).
+    """
+
+    ip: str
+    port: int
+    username: str
+    password: str
+    expiration_time: Optional[Union[int, str]] = None
+    region: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ProxyServer":
+        """Create from API response dict."""
+        return cls(
+            ip=data.get("ip", ""),
+            port=int(data.get("port", 0)),
+            username=data.get("username", data.get("user", "")),
+            password=data.get("password", data.get("pwd", "")),
+            expiration_time=data.get("expiration_time", data.get("expireTime")),
+            region=data.get("region"),
+        )
+
+    def to_proxy_url(self, protocol: str = "http") -> str:
+        """
+        Build proxy URL for this server.
+
+        Args:
+            protocol: Proxy protocol (http/https/socks5).
+
+        Returns:
+            Complete proxy URL.
+        """
+        return f"{protocol}://{self.username}:{self.password}@{self.ip}:{self.port}"
+
+    def is_expired(self) -> bool:
+        """Check if proxy has expired (if expiration_time is available)."""
+        if self.expiration_time is None:
+            return False
+
+        import time
+
+        if isinstance(self.expiration_time, int):
+            return time.time() > self.expiration_time
+
+        # String timestamp handling would need datetime parsing
+        return False

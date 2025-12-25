@@ -51,6 +51,7 @@ from .models import (
     CommonSettings,
     ProxyConfig,
     ProxyProduct,
+    ProxyServer,
     ProxyUser,
     ProxyUserList,
     ScraperTaskConfig,
@@ -195,6 +196,15 @@ class ThordataClient:
         self._proxy_users_url = (
             f"{locations_base.replace('/locations', '')}/proxy-users"
         )
+        whitelist_base = os.getenv(
+            "THORDATA_WHITELIST_BASE_URL", "https://api.thordata.com/api"
+        )
+        self._whitelist_url = f"{whitelist_base}/whitelisted-ips"
+        proxy_api_base = os.getenv(
+            "THORDATA_PROXY_API_BASE_URL", "https://api.thordata.com/api"
+        )
+        self._proxy_list_url = f"{proxy_api_base}/proxy/proxy-list"
+        self._proxy_expiration_url = f"{proxy_api_base}/proxy/expiration-time"
         self._list_url = f"{web_scraper_api_base}/tasks-list"
 
     # =========================================================================
@@ -1209,6 +1219,177 @@ class ThordataClient:
             raise_for_code(f"Create proxy user failed: {msg}", code=code, payload=data)
 
         return data.get("data", {})
+
+    def add_whitelist_ip(
+        self,
+        ip: str,
+        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL,
+        status: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Add an IP to the whitelist for IP authentication.
+
+        Args:
+            ip: IP address to whitelist.
+            proxy_type: Proxy type (1=Residential, 2=Unlimited, 9=Mobile).
+            status: Enable/disable the IP (True/False).
+
+        Returns:
+            API response data.
+
+        Example:
+            >>> result = client.add_whitelist_ip(
+            ...     ip="123.45.67.89",
+            ...     proxy_type=ProxyType.RESIDENTIAL,
+            ...     status=True
+            ... )
+        """
+        self._require_public_credentials()
+
+        headers = build_public_api_headers(
+            self.public_token or "", self.public_key or ""
+        )
+
+        # Convert ProxyType to int
+        proxy_type_int = (
+            int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
+        )
+
+        payload = {
+            "proxy_type": str(proxy_type_int),
+            "ip": ip,
+            "status": "true" if status else "false",
+        }
+
+        logger.info(f"Adding whitelist IP: {ip}")
+
+        response = self._api_request_with_retry(
+            "POST",
+            f"{self._whitelist_url}/add-ip",
+            data=payload,
+            headers=headers,
+        )
+        response.raise_for_status()
+
+        data = response.json()
+        code = data.get("code")
+
+        if code != 200:
+            msg = extract_error_message(data)
+            raise_for_code(f"Add whitelist IP failed: {msg}", code=code, payload=data)
+
+        return data.get("data", {})
+
+    def list_proxy_servers(
+        self,
+        proxy_type: int,
+    ) -> List[ProxyServer]:
+        """
+        List ISP or Datacenter proxy servers.
+
+        Args:
+            proxy_type: Proxy type (1=ISP, 2=Datacenter).
+
+        Returns:
+            List of ProxyServer objects.
+
+        Example:
+            >>> servers = client.list_proxy_servers(proxy_type=1)  # ISP proxies
+            >>> for server in servers:
+            ...     print(f"{server.ip}:{server.port} - expires: {server.expiration_time}")
+        """
+
+        self._require_public_credentials()
+
+        params = {
+            "token": self.public_token,
+            "key": self.public_key,
+            "proxy_type": str(proxy_type),
+        }
+
+        logger.info(f"Listing proxy servers: type={proxy_type}")
+
+        response = self._api_request_with_retry(
+            "GET",
+            self._proxy_list_url,
+            params=params,
+        )
+        response.raise_for_status()
+
+        data = response.json()
+
+        if isinstance(data, dict):
+            code = data.get("code")
+            if code is not None and code != 200:
+                msg = extract_error_message(data)
+                raise_for_code(
+                    f"List proxy servers error: {msg}", code=code, payload=data
+                )
+
+            # Extract list from data field
+            server_list = data.get("data", data.get("list", []))
+        elif isinstance(data, list):
+            server_list = data
+        else:
+            raise ThordataNetworkError(
+                f"Unexpected proxy list response: {type(data).__name__}",
+                original_error=None,
+            )
+
+        return [ProxyServer.from_dict(s) for s in server_list]
+
+    def get_proxy_expiration(
+        self,
+        ips: Union[str, List[str]],
+        proxy_type: int,
+    ) -> Dict[str, Any]:
+        """
+        Get expiration time for specific proxy IPs.
+
+        Args:
+            ips: Single IP or list of IPs to check.
+            proxy_type: Proxy type (1=ISP, 2=Datacenter).
+
+        Returns:
+            Dict with expiration information.
+
+        Example:
+            >>> result = client.get_proxy_expiration("123.45.67.89", proxy_type=1)
+            >>> print(result)
+        """
+        self._require_public_credentials()
+
+        # Convert list to comma-separated string
+        if isinstance(ips, list):
+            ips = ",".join(ips)
+
+        params = {
+            "token": self.public_token,
+            "key": self.public_key,
+            "proxy_type": str(proxy_type),
+            "ips": ips,
+        }
+
+        logger.info(f"Getting proxy expiration: {ips}")
+
+        response = self._api_request_with_retry(
+            "GET",
+            self._proxy_expiration_url,
+            params=params,
+        )
+        response.raise_for_status()
+
+        data = response.json()
+
+        if isinstance(data, dict):
+            code = data.get("code")
+            if code is not None and code != 200:
+                msg = extract_error_message(data)
+                raise_for_code(f"Get expiration error: {msg}", code=code, payload=data)
+
+            return data.get("data", data)
+
+        return data
 
     def wait_for_task(
         self,
