@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Union
 
 import requests
@@ -50,9 +51,12 @@ from .models import (
     CommonSettings,
     ProxyConfig,
     ProxyProduct,
+    ProxyUser,
+    ProxyUserList,
     ScraperTaskConfig,
     SerpRequest,
     UniversalScrapeRequest,
+    UsageStatistics,
     VideoTaskConfig,
 )
 from .retry import RetryConfig, with_retry
@@ -185,6 +189,12 @@ class ThordataClient:
         self._status_url = f"{web_scraper_api_base}/tasks-status"
         self._download_url = f"{web_scraper_api_base}/tasks-download"
         self._locations_base_url = locations_base
+        self._usage_stats_url = (
+            f"{locations_base.replace('/locations', '')}/account/usage-statistics"
+        )
+        self._proxy_users_url = (
+            f"{locations_base.replace('/locations', '')}/proxy-users"
+        )
         self._list_url = f"{web_scraper_api_base}/tasks-list"
 
     # =========================================================================
@@ -1007,6 +1017,198 @@ class ThordataClient:
             raise_for_code(f"List tasks failed: {msg}", code=code, payload=data)
 
         return data.get("data", {"count": 0, "list": []})
+
+    def get_usage_statistics(
+        self,
+        from_date: Union[str, date],
+        to_date: Union[str, date],
+    ) -> UsageStatistics:
+        """
+        Get account usage statistics for a date range.
+
+        Args:
+            from_date: Start date (YYYY-MM-DD string or date object).
+            to_date: End date (YYYY-MM-DD string or date object).
+
+        Returns:
+            UsageStatistics object with traffic data.
+
+        Raises:
+            ValueError: If date range exceeds 180 days.
+
+        Example:
+            >>> from datetime import date, timedelta
+            >>> today = date.today()
+            >>> week_ago = today - timedelta(days=7)
+            >>> stats = client.get_usage_statistics(week_ago, today)
+            >>> print(f"Used: {stats.range_usage_gb():.2f} GB")
+            >>> print(f"Balance: {stats.balance_gb():.2f} GB")
+        """
+
+        self._require_public_credentials()
+
+        # Convert dates to strings
+        if isinstance(from_date, date):
+            from_date = from_date.strftime("%Y-%m-%d")
+        if isinstance(to_date, date):
+            to_date = to_date.strftime("%Y-%m-%d")
+
+        params = {
+            "token": self.public_token,
+            "key": self.public_key,
+            "from_date": from_date,
+            "to_date": to_date,
+        }
+
+        logger.info(f"Getting usage statistics: {from_date} to {to_date}")
+
+        response = self._api_request_with_retry(
+            "GET",
+            self._usage_stats_url,
+            params=params,
+        )
+        response.raise_for_status()
+
+        data = response.json()
+
+        if isinstance(data, dict):
+            code = data.get("code")
+            if code is not None and code != 200:
+                msg = extract_error_message(data)
+                raise_for_code(
+                    f"Usage statistics error: {msg}",
+                    code=code,
+                    payload=data,
+                )
+
+            # Extract data field
+            usage_data = data.get("data", data)
+            return UsageStatistics.from_dict(usage_data)
+
+        raise ThordataNetworkError(
+            f"Unexpected usage statistics response: {type(data).__name__}",
+            original_error=None,
+        )
+
+    def list_proxy_users(
+        self, proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL
+    ) -> ProxyUserList:
+        """
+        List all proxy users (sub-accounts).
+
+        Args:
+            proxy_type: Proxy type (1=Residential, 2=Unlimited).
+
+        Returns:
+            ProxyUserList with user details.
+
+        Example:
+            >>> users = client.list_proxy_users(proxy_type=ProxyType.RESIDENTIAL)
+            >>> print(f"Total users: {users.user_count}")
+            >>> for user in users.users:
+            ...     print(f"{user.username}: {user.usage_gb():.2f} GB used")
+        """
+
+        self._require_public_credentials()
+
+        params = {
+            "token": self.public_token,
+            "key": self.public_key,
+            "proxy_type": str(
+                int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
+            ),
+        }
+
+        logger.info(f"Listing proxy users: type={params['proxy_type']}")
+
+        response = self._api_request_with_retry(
+            "GET",
+            f"{self._proxy_users_url}/user-list",
+            params=params,
+        )
+        response.raise_for_status()
+
+        data = response.json()
+
+        if isinstance(data, dict):
+            code = data.get("code")
+            if code is not None and code != 200:
+                msg = extract_error_message(data)
+                raise_for_code(
+                    f"List proxy users error: {msg}", code=code, payload=data
+                )
+
+            user_data = data.get("data", data)
+            return ProxyUserList.from_dict(user_data)
+
+        raise ThordataNetworkError(
+            f"Unexpected proxy users response: {type(data).__name__}",
+            original_error=None,
+        )
+
+    def create_proxy_user(
+        self,
+        username: str,
+        password: str,
+        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL,
+        traffic_limit: int = 0,
+        status: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Create a new proxy user (sub-account).
+
+        Args:
+            username: Username for the new user.
+            password: Password for the new user.
+            proxy_type: Proxy type (1=Residential, 2=Unlimited).
+            traffic_limit: Traffic limit in MB (0 = unlimited, min 100).
+            status: Enable/disable user (True/False).
+
+        Returns:
+            API response data.
+
+        Example:
+            >>> result = client.create_proxy_user(
+            ...     username="subuser1",
+            ...     password="securepass",
+            ...     traffic_limit=5120,  # 5GB
+            ...     status=True
+            ... )
+        """
+        self._require_public_credentials()
+
+        headers = build_public_api_headers(
+            self.public_token or "", self.public_key or ""
+        )
+
+        payload = {
+            "proxy_type": str(
+                int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
+            ),
+            "username": username,
+            "password": password,
+            "traffic_limit": str(traffic_limit),
+            "status": "true" if status else "false",
+        }
+
+        logger.info(f"Creating proxy user: {username}")
+
+        response = self._api_request_with_retry(
+            "POST",
+            f"{self._proxy_users_url}/create-user",
+            data=payload,
+            headers=headers,
+        )
+        response.raise_for_status()
+
+        data = response.json()
+        code = data.get("code")
+
+        if code != 200:
+            msg = extract_error_message(data)
+            raise_for_code(f"Create proxy user failed: {msg}", code=code, payload=data)
+
+        return data.get("data", {})
 
     def wait_for_task(
         self,

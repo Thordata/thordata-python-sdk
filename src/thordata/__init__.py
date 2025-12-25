@@ -81,12 +81,15 @@ from .models import (
     CommonSettings,
     ProxyConfig,
     ProxyProduct,
+    ProxyUser,
+    ProxyUserList,
     ScraperTaskConfig,
     SerpRequest,
     StaticISPProxy,
     StickySession,
     TaskStatusResponse,
     UniversalScrapeRequest,
+    UsageStatistics,
     VideoTaskConfig,
 )
 
@@ -119,6 +122,9 @@ __all__ = [
     # Models
     "ProxyConfig",
     "ProxyProduct",
+    "ProxyUser",
+    "ProxyUserList",
+    "UsageStatistics",
     "StaticISPProxy",
     "StickySession",
     "SerpRequest",

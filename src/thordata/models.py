@@ -958,3 +958,118 @@ class TaskStatusResponse:
         """Check if the task failed."""
         failure_statuses = {"failed", "error"}
         return self.status.lower() in failure_statuses
+
+
+@dataclass
+class UsageStatistics:
+    """
+    Response model for account usage statistics.
+
+    Attributes:
+        total_usage_traffic: Total traffic used (KB).
+        traffic_balance: Remaining traffic balance (KB).
+        query_days: Number of days in the query range.
+        range_usage_traffic: Traffic used in the specified date range (KB).
+        data: Daily usage breakdown.
+    """
+
+    total_usage_traffic: float
+    traffic_balance: float
+    query_days: int
+    range_usage_traffic: float
+    data: List[Dict[str, Any]]
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "UsageStatistics":
+        """Create from API response dict."""
+        return cls(
+            total_usage_traffic=float(data.get("total_usage_traffic", 0)),
+            traffic_balance=float(data.get("traffic_balance", 0)),
+            query_days=int(data.get("query_days", 0)),
+            range_usage_traffic=float(data.get("range_usage_traffic", 0)),
+            data=data.get("data", []),
+        )
+
+    def total_usage_gb(self) -> float:
+        """Get total usage in GB."""
+        return self.total_usage_traffic / (1024 * 1024)
+
+    def balance_gb(self) -> float:
+        """Get balance in GB."""
+        return self.traffic_balance / (1024 * 1024)
+
+    def range_usage_gb(self) -> float:
+        """Get range usage in GB."""
+        return self.range_usage_traffic / (1024 * 1024)
+
+
+@dataclass
+class ProxyUser:
+    """
+    Proxy user (sub-account) information.
+
+    Attributes:
+        username: User's username.
+        password: User's password.
+        status: User status (True=enabled, False=disabled).
+        traffic_limit: Traffic limit in MB (0 = unlimited).
+        usage_traffic: Traffic used in KB.
+    """
+
+    username: str
+    password: str
+    status: bool
+    traffic_limit: int
+    usage_traffic: float
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ProxyUser":
+        """Create from API response dict."""
+        return cls(
+            username=data.get("username", ""),
+            password=data.get("password", ""),
+            status=data.get("status") in (True, "true", 1),
+            traffic_limit=int(data.get("traffic_limit", 0)),
+            usage_traffic=float(data.get("usage_traffic", 0)),
+        )
+
+    def usage_gb(self) -> float:
+        """Get usage in GB."""
+        return self.usage_traffic / (1024 * 1024)
+
+    def limit_gb(self) -> float:
+        """Get limit in GB (0 means unlimited)."""
+        if self.traffic_limit == 0:
+            return 0
+        return self.traffic_limit / 1024
+
+
+@dataclass
+class ProxyUserList:
+    """
+    Response model for proxy user list.
+
+    Attributes:
+        limit: Total traffic limit (KB).
+        remaining_limit: Remaining traffic limit (KB).
+        user_count: Number of users.
+        users: List of proxy users.
+    """
+
+    limit: float
+    remaining_limit: float
+    user_count: int
+    users: List[ProxyUser]
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ProxyUserList":
+        """Create from API response dict."""
+        user_list = data.get("list", [])
+        users = [ProxyUser.from_dict(u) for u in user_list]
+
+        return cls(
+            limit=float(data.get("limit", 0)),
+            remaining_limit=float(data.get("remaining_limit", 0)),
+            user_count=int(data.get("user_count", len(users))),
+            users=users,
+        )

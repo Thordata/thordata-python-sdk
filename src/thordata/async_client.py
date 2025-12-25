@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Union
 
 import aiohttp
@@ -49,9 +50,12 @@ from .exceptions import (
 from .models import (
     CommonSettings,
     ProxyConfig,
+    ProxyUser,
+    ProxyUserList,
     ScraperTaskConfig,
     SerpRequest,
     UniversalScrapeRequest,
+    UsageStatistics,
     VideoTaskConfig,
 )
 from .retry import RetryConfig
@@ -162,6 +166,12 @@ class AsyncThordataClient:
         self._status_url = f"{web_scraper_api_base}/tasks-status"
         self._download_url = f"{web_scraper_api_base}/tasks-download"
         self._locations_base_url = locations_base
+        self._usage_stats_url = (
+            f"{locations_base.replace('/locations', '')}/account/usage-statistics"
+        )
+        self._proxy_users_url = (
+            f"{locations_base.replace('/locations', '')}/proxy-users"
+        )
         self._list_url = f"{web_scraper_api_base}/tasks-list"
 
         # Session initialized lazily
@@ -810,6 +820,184 @@ class AsyncThordataClient:
         except aiohttp.ClientError as e:
             raise ThordataNetworkError(
                 f"List tasks failed: {e}", original_error=e
+            ) from e
+
+    async def get_usage_statistics(
+        self,
+        from_date: Union[str, date],
+        to_date: Union[str, date],
+    ) -> UsageStatistics:
+        """
+        Get account usage statistics for a date range.
+
+        Args:
+            from_date: Start date (YYYY-MM-DD string or date object).
+            to_date: End date (YYYY-MM-DD string or date object).
+
+        Returns:
+            UsageStatistics object with traffic data.
+        """
+
+        self._require_public_credentials()
+        session = self._get_session()
+
+        # Convert dates to strings
+        if isinstance(from_date, date):
+            from_date = from_date.strftime("%Y-%m-%d")
+        if isinstance(to_date, date):
+            to_date = to_date.strftime("%Y-%m-%d")
+
+        params = {
+            "token": self.public_token,
+            "key": self.public_key,
+            "from_date": from_date,
+            "to_date": to_date,
+        }
+
+        logger.info(f"Async getting usage statistics: {from_date} to {to_date}")
+
+        try:
+            async with session.get(
+                self._usage_stats_url,
+                params=params,
+                timeout=self._api_timeout,
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+
+                if isinstance(data, dict):
+                    code = data.get("code")
+                    if code is not None and code != 200:
+                        msg = extract_error_message(data)
+                        raise_for_code(
+                            f"Usage statistics error: {msg}",
+                            code=code,
+                            payload=data,
+                        )
+
+                    usage_data = data.get("data", data)
+                    return UsageStatistics.from_dict(usage_data)
+
+                raise ThordataNetworkError(
+                    f"Unexpected usage statistics response: {type(data).__name__}",
+                    original_error=None,
+                )
+
+        except asyncio.TimeoutError as e:
+            raise ThordataTimeoutError(
+                f"Usage statistics timed out: {e}", original_error=e
+            ) from e
+        except aiohttp.ClientError as e:
+            raise ThordataNetworkError(
+                f"Usage statistics failed: {e}", original_error=e
+            ) from e
+
+    async def list_proxy_users(
+        self, proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL
+    ) -> ProxyUserList:
+        """List all proxy users (sub-accounts)."""
+
+        self._require_public_credentials()
+        session = self._get_session()
+
+        params = {
+            "token": self.public_token,
+            "key": self.public_key,
+            "proxy_type": str(
+                int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
+            ),
+        }
+
+        logger.info(f"Async listing proxy users: type={params['proxy_type']}")
+
+        try:
+            async with session.get(
+                f"{self._proxy_users_url}/user-list",
+                params=params,
+                timeout=self._api_timeout,
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+
+                if isinstance(data, dict):
+                    code = data.get("code")
+                    if code is not None and code != 200:
+                        msg = extract_error_message(data)
+                        raise_for_code(
+                            f"List proxy users error: {msg}", code=code, payload=data
+                        )
+
+                    user_data = data.get("data", data)
+                    return ProxyUserList.from_dict(user_data)
+
+                raise ThordataNetworkError(
+                    f"Unexpected proxy users response: {type(data).__name__}",
+                    original_error=None,
+                )
+
+        except asyncio.TimeoutError as e:
+            raise ThordataTimeoutError(
+                f"List users timed out: {e}", original_error=e
+            ) from e
+        except aiohttp.ClientError as e:
+            raise ThordataNetworkError(
+                f"List users failed: {e}", original_error=e
+            ) from e
+
+    async def create_proxy_user(
+        self,
+        username: str,
+        password: str,
+        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL,
+        traffic_limit: int = 0,
+        status: bool = True,
+    ) -> Dict[str, Any]:
+        """Create a new proxy user (sub-account)."""
+        self._require_public_credentials()
+        session = self._get_session()
+
+        headers = build_public_api_headers(
+            self.public_token or "", self.public_key or ""
+        )
+
+        payload = {
+            "proxy_type": str(
+                int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
+            ),
+            "username": username,
+            "password": password,
+            "traffic_limit": str(traffic_limit),
+            "status": "true" if status else "false",
+        }
+
+        logger.info(f"Async creating proxy user: {username}")
+
+        try:
+            async with session.post(
+                f"{self._proxy_users_url}/create-user",
+                data=payload,
+                headers=headers,
+                timeout=self._api_timeout,
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+
+                code = data.get("code")
+                if code != 200:
+                    msg = extract_error_message(data)
+                    raise_for_code(
+                        f"Create proxy user failed: {msg}", code=code, payload=data
+                    )
+
+                return data.get("data", {})
+
+        except asyncio.TimeoutError as e:
+            raise ThordataTimeoutError(
+                f"Create user timed out: {e}", original_error=e
+            ) from e
+        except aiohttp.ClientError as e:
+            raise ThordataNetworkError(
+                f"Create user failed: {e}", original_error=e
             ) from e
 
     async def wait_for_task(
