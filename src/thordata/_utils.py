@@ -70,20 +70,34 @@ def decode_base64_image(png_str: str) -> bytes:
         raise ValueError(f"Failed to decode base64 image: {e}") from e
 
 
-def build_auth_headers(token: str) -> Dict[str, str]:
+def build_auth_headers(token: str, mode: str = "bearer") -> Dict[str, str]:
     """
     Build authorization headers for API requests.
 
+    Supports two modes:
+    - bearer: Authorization: Bearer <token> (Thordata Docs examples)
+    - header_token: token: <token> (Interface documentation)
+
     Args:
         token: The scraper token.
+        mode: Authentication mode ("bearer" or "header_token").
 
     Returns:
-        Headers dict with Authorization and Content-Type.
+        Headers dict with Authorization/token and Content-Type.
     """
-    return {
-        "Authorization": f"Bearer {token}",
+    headers = {
         "Content-Type": "application/x-www-form-urlencoded",
     }
+
+    if mode == "bearer":
+        headers["Authorization"] = f"Bearer {token}"
+    elif mode == "header_token":
+        headers["token"] = token
+    else:
+        # Fallback to bearer for compatibility
+        headers["Authorization"] = f"Bearer {token}"
+
+    return headers
 
 
 def build_builder_headers(
@@ -171,3 +185,23 @@ def build_user_agent(sdk_version: str, http_client: str) -> str:
     py = platform.python_version()
     system = platform.system()
     return f"thordata-python-sdk/{sdk_version} (python {py}; {system}; {http_client})"
+
+
+def build_sign_headers(sign: str, api_key: str) -> Dict[str, str]:
+    """
+    Build headers for Public API NEW (sign + apiKey authentication).
+
+    This is a different authentication system from token+key.
+
+    Args:
+        sign: The sign value from Dashboard (immutable).
+        api_key: The apiKey value from Dashboard (can be changed).
+
+    Returns:
+        Headers dict with sign, apiKey, and Content-Type.
+    """
+    return {
+        "sign": sign,
+        "apiKey": api_key,
+        "Content-Type": "application/x-www-form-urlencoded",
+    }

@@ -35,6 +35,7 @@ from ._utils import (
     build_auth_headers,
     build_builder_headers,
     build_public_api_headers,
+    build_sign_headers,
     build_user_agent,
     decode_base64_image,
     extract_error_message,
@@ -99,11 +100,14 @@ class AsyncThordataClient:
         scraper_token: str,
         public_token: Optional[str] = None,
         public_key: Optional[str] = None,
+        sign: Optional[str] = None,
+        api_key: Optional[str] = None,
         proxy_host: str = "pr.thordata.net",
         proxy_port: int = 9999,
         timeout: int = 30,
         api_timeout: int = 60,
         retry_config: Optional[RetryConfig] = None,
+        auth_mode: str = "bearer",
         scraperapi_base_url: Optional[str] = None,
         universalapi_base_url: Optional[str] = None,
         web_scraper_api_base_url: Optional[str] = None,
@@ -117,6 +121,10 @@ class AsyncThordataClient:
         self.public_token = public_token
         self.public_key = public_key
 
+        # Public API authentication
+        self.sign = sign or os.getenv("THORDATA_SIGN")
+        self.api_key = api_key or os.getenv("THORDATA_API_KEY")
+
         # Proxy configuration
         self._proxy_host = proxy_host
         self._proxy_port = proxy_port
@@ -128,6 +136,13 @@ class AsyncThordataClient:
 
         # Retry configuration
         self._retry_config = retry_config or RetryConfig()
+
+        # Authentication mode
+        self._auth_mode = auth_mode.lower()
+        if self._auth_mode not in ("bearer", "header_token"):
+            raise ThordataConfigError(
+                f"Invalid auth_mode: {auth_mode}. Must be 'bearer' or 'header_token'."
+            )
 
         # Pre-calculate proxy auth
         self._proxy_url = f"http://{proxy_host}:{proxy_port}"
@@ -159,6 +174,16 @@ class AsyncThordataClient:
             or os.getenv("THORDATA_LOCATIONS_BASE_URL")
             or self.LOCATIONS_URL
         ).rstrip("/")
+
+        gateway_base = os.getenv(
+            "THORDATA_GATEWAY_BASE_URL", "https://api.thordata.com/api/gateway"
+        )
+        child_base = os.getenv(
+            "THORDATA_CHILD_BASE_URL", "https://api.thordata.com/api/child"
+        )
+
+        self._gateway_base_url = gateway_base
+        self._child_base_url = child_base
 
         self._serp_url = f"{scraperapi_base}/request"
         self._builder_url = f"{scraperapi_base}/builder"
@@ -359,7 +384,7 @@ class AsyncThordataClient:
         )
 
         payload = request.to_payload()
-        headers = build_auth_headers(self.scraper_token)
+        headers = build_auth_headers(self.scraper_token, mode=self._auth_mode)
 
         logger.info(f"Async SERP Search: {engine_str} - {query}")
 
@@ -407,7 +432,7 @@ class AsyncThordataClient:
         session = self._get_session()
 
         payload = request.to_payload()
-        headers = build_auth_headers(self.scraper_token)
+        headers = build_auth_headers(self.scraper_token, mode=self._auth_mode)
 
         logger.info(f"Async SERP Advanced: {request.engine} - {request.query}")
 
@@ -501,7 +526,7 @@ class AsyncThordataClient:
         session = self._get_session()
 
         payload = request.to_payload()
-        headers = build_auth_headers(self.scraper_token)
+        headers = build_auth_headers(self.scraper_token, mode=self._auth_mode)
 
         logger.info(f"Async Universal Scrape: {request.url}")
 
@@ -832,6 +857,46 @@ class AsyncThordataClient:
                 f"List tasks failed: {e}", original_error=e
             ) from e
 
+    async def wait_for_task(
+        self,
+        task_id: str,
+        *,
+        poll_interval: float = 5.0,
+        max_wait: float = 600.0,
+    ) -> str:
+        """
+        Wait for a task to complete.
+        """
+
+        import time
+
+        start = time.monotonic()
+
+        while (time.monotonic() - start) < max_wait:
+            status = await self.get_task_status(task_id)
+
+            logger.debug(f"Task {task_id} status: {status}")
+
+            terminal_statuses = {
+                "ready",
+                "success",
+                "finished",
+                "failed",
+                "error",
+                "cancelled",
+            }
+
+            if status.lower() in terminal_statuses:
+                return status
+
+            await asyncio.sleep(poll_interval)
+
+        raise TimeoutError(f"Task {task_id} did not complete within {max_wait} seconds")
+
+    # =========================================================================
+    # Proxy Account Management Methods
+    # =========================================================================
+
     async def get_usage_statistics(
         self,
         from_date: Union[str, date],
@@ -900,6 +965,109 @@ class AsyncThordataClient:
         except aiohttp.ClientError as e:
             raise ThordataNetworkError(
                 f"Usage statistics failed: {e}", original_error=e
+            ) from e
+
+    async def get_residential_balance(self) -> Dict[str, Any]:
+        """
+        Get residential proxy balance (Public API NEW).
+
+        Requires sign and apiKey credentials.
+
+        Returns:
+            Dict with 'balance' (bytes) and 'expire_time' (timestamp).
+        """
+        if not self.sign or not self.api_key:
+            raise ThordataConfigError(
+                "sign and api_key are required for Public API NEW. "
+                "Set THORDATA_SIGN and THORDATA_API_KEY environment variables."
+            )
+
+        session = self._get_session()
+        headers = build_sign_headers(self.sign, self.api_key)
+
+        logger.info("Async getting residential proxy balance (API NEW)")
+
+        try:
+            async with session.post(
+                f"{self._gateway_base_url}/getFlowBalance",
+                headers=headers,
+                data={},
+                timeout=self._api_timeout,
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+
+                code = data.get("code")
+                if code != 200:
+                    msg = extract_error_message(data)
+                    raise_for_code(
+                        f"Get balance failed: {msg}", code=code, payload=data
+                    )
+
+                return data.get("data", {})
+
+        except asyncio.TimeoutError as e:
+            raise ThordataTimeoutError(
+                f"Get balance timed out: {e}", original_error=e
+            ) from e
+        except aiohttp.ClientError as e:
+            raise ThordataNetworkError(
+                f"Get balance failed: {e}", original_error=e
+            ) from e
+
+    async def get_residential_usage(
+        self,
+        start_time: Union[str, int],
+        end_time: Union[str, int],
+    ) -> Dict[str, Any]:
+        """
+        Get residential proxy usage records (Public API NEW).
+
+        Args:
+            start_time: Start timestamp (Unix timestamp or YYYY-MM-DD HH:MM:SS).
+            end_time: End timestamp (Unix timestamp or YYYY-MM-DD HH:MM:SS).
+
+        Returns:
+            Dict with usage data including 'all_flow', 'all_used_flow', 'data' list.
+        """
+        if not self.sign or not self.api_key:
+            raise ThordataConfigError(
+                "sign and api_key are required for Public API NEW."
+            )
+
+        session = self._get_session()
+        headers = build_sign_headers(self.sign, self.api_key)
+        payload = {
+            "start_time": str(start_time),
+            "end_time": str(end_time),
+        }
+
+        logger.info(f"Async getting residential usage: {start_time} to {end_time}")
+
+        try:
+            async with session.post(
+                f"{self._gateway_base_url}/usageRecord",
+                headers=headers,
+                data=payload,
+                timeout=self._api_timeout,
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+
+                code = data.get("code")
+                if code != 200:
+                    msg = extract_error_message(data)
+                    raise_for_code(f"Get usage failed: {msg}", code=code, payload=data)
+
+                return data.get("data", {})
+
+        except asyncio.TimeoutError as e:
+            raise ThordataTimeoutError(
+                f"Get usage timed out: {e}", original_error=e
+            ) from e
+        except aiohttp.ClientError as e:
+            raise ThordataNetworkError(
+                f"Get usage failed: {e}", original_error=e
             ) from e
 
     async def list_proxy_users(
@@ -1122,6 +1290,141 @@ class AsyncThordataClient:
                 f"List servers failed: {e}", original_error=e
             ) from e
 
+    async def get_isp_regions(self) -> List[Dict[str, Any]]:
+        """
+        Get available ISP proxy regions (Public API NEW).
+
+        Returns:
+            List of regions with id, continent, country, city, num, pricing.
+        """
+        if not self.sign or not self.api_key:
+            raise ThordataConfigError(
+                "sign and api_key are required for Public API NEW."
+            )
+
+        session = self._get_session()
+        headers = build_sign_headers(self.sign, self.api_key)
+
+        logger.info("Async getting ISP regions (API NEW)")
+
+        try:
+            async with session.post(
+                f"{self._gateway_base_url}/getRegionIsp",
+                headers=headers,
+                data={},
+                timeout=self._api_timeout,
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+
+                code = data.get("code")
+                if code != 200:
+                    msg = extract_error_message(data)
+                    raise_for_code(
+                        f"Get ISP regions failed: {msg}", code=code, payload=data
+                    )
+
+                return data.get("data", [])
+
+        except asyncio.TimeoutError as e:
+            raise ThordataTimeoutError(
+                f"Get ISP regions timed out: {e}", original_error=e
+            ) from e
+        except aiohttp.ClientError as e:
+            raise ThordataNetworkError(
+                f"Get ISP regions failed: {e}", original_error=e
+            ) from e
+
+    async def list_isp_proxies(self) -> List[Dict[str, Any]]:
+        """
+        List ISP proxies (Public API NEW).
+
+        Returns:
+            List of ISP proxies with ip, port, user, pwd, startTime, expireTime.
+        """
+        if not self.sign or not self.api_key:
+            raise ThordataConfigError(
+                "sign and api_key are required for Public API NEW."
+            )
+
+        session = self._get_session()
+        headers = build_sign_headers(self.sign, self.api_key)
+
+        logger.info("Async listing ISP proxies (API NEW)")
+
+        try:
+            async with session.post(
+                f"{self._gateway_base_url}/queryListIsp",
+                headers=headers,
+                data={},
+                timeout=self._api_timeout,
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+
+                code = data.get("code")
+                if code != 200:
+                    msg = extract_error_message(data)
+                    raise_for_code(
+                        f"List ISP proxies failed: {msg}", code=code, payload=data
+                    )
+
+                return data.get("data", [])
+
+        except asyncio.TimeoutError as e:
+            raise ThordataTimeoutError(
+                f"List ISP proxies timed out: {e}", original_error=e
+            ) from e
+        except aiohttp.ClientError as e:
+            raise ThordataNetworkError(
+                f"List ISP proxies failed: {e}", original_error=e
+            ) from e
+
+    async def get_wallet_balance(self) -> Dict[str, Any]:
+        """
+        Get wallet balance for ISP proxies (Public API NEW).
+
+        Returns:
+            Dict with 'walletBalance'.
+        """
+        if not self.sign or not self.api_key:
+            raise ThordataConfigError(
+                "sign and api_key are required for Public API NEW."
+            )
+
+        session = self._get_session()
+        headers = build_sign_headers(self.sign, self.api_key)
+
+        logger.info("Async getting wallet balance (API NEW)")
+
+        try:
+            async with session.post(
+                f"{self._gateway_base_url}/getBalance",
+                headers=headers,
+                data={},
+                timeout=self._api_timeout,
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+
+                code = data.get("code")
+                if code != 200:
+                    msg = extract_error_message(data)
+                    raise_for_code(
+                        f"Get wallet balance failed: {msg}", code=code, payload=data
+                    )
+
+                return data.get("data", {})
+
+        except asyncio.TimeoutError as e:
+            raise ThordataTimeoutError(
+                f"Get wallet balance timed out: {e}", original_error=e
+            ) from e
+        except aiohttp.ClientError as e:
+            raise ThordataNetworkError(
+                f"Get wallet balance failed: {e}", original_error=e
+            ) from e
+
     async def get_proxy_expiration(
         self,
         ips: Union[str, List[str]],
@@ -1174,42 +1477,6 @@ class AsyncThordataClient:
             raise ThordataNetworkError(
                 f"Get expiration failed: {e}", original_error=e
             ) from e
-
-    async def wait_for_task(
-        self,
-        task_id: str,
-        *,
-        poll_interval: float = 5.0,
-        max_wait: float = 600.0,
-    ) -> str:
-        """
-        Wait for a task to complete.
-        """
-
-        import time
-
-        start = time.monotonic()
-
-        while (time.monotonic() - start) < max_wait:
-            status = await self.get_task_status(task_id)
-
-            logger.debug(f"Task {task_id} status: {status}")
-
-            terminal_statuses = {
-                "ready",
-                "success",
-                "finished",
-                "failed",
-                "error",
-                "cancelled",
-            }
-
-            if status.lower() in terminal_statuses:
-                return status
-
-            await asyncio.sleep(poll_interval)
-
-        raise TimeoutError(f"Task {task_id} did not complete within {max_wait} seconds")
 
     # =========================================================================
     # Location API Methods
