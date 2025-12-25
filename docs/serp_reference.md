@@ -1,5 +1,6 @@
 # Thordata SERP API Reference (SDK-aligned)
 
+> For a comprehensive parameter reference, see [serp_reference_legacy.md](./serp_reference_legacy.md).
 This document is an **SDK-aligned reference** for Thordata SERP API usage.
 For the authoritative and up-to-date parameter list, always refer to the official docs:
 - Google Search parameters: doc.thordata.com (Google Search)

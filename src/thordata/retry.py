@@ -64,7 +64,10 @@ class RetryConfig:
 
     # Status codes to retry on (5xx server errors + 429 rate limit)
     retry_on_status_codes: Set[int] = field(
-        default_factory=lambda: {300, 429, 500, 502, 503, 504}
+        default_factory=lambda: {429, 500, 502, 503, 504}
+    )
+    retry_on_api_codes: Set[int] = field(
+        default_factory=lambda: {300}  # API response body code
     )
 
     # Exception types to always retry on

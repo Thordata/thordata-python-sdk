@@ -222,7 +222,8 @@ class ThordataNotCollectedError(ThordataAPIError):
     This error is often transient and typically safe to retry.
     """
 
-    HTTP_STATUS_CODES = {300}
+    API_CODES = {300}
+    HTTP_STATUS_CODES: Set[int] = set()
 
     @property
     def is_retryable(self) -> bool:
@@ -281,8 +282,9 @@ def raise_for_code(
         "request_id": request_id,
     }
 
-    # Not collected (often retryable, not billed)
-    if effective_code in ThordataNotCollectedError.HTTP_STATUS_CODES:
+    # Not collected (API payload code 300, often retryable, not billed)
+    # Check this FIRST since 300 is in API_CODES, not HTTP_STATUS_CODES
+    if effective_code in ThordataNotCollectedError.API_CODES:
         raise ThordataNotCollectedError(message, **kwargs)
 
     # Auth errors

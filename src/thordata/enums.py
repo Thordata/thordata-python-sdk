@@ -34,12 +34,13 @@ class Continent(str, Enum):
 class ProxyHost(str, Enum):
     """
     Available proxy gateway hosts.
+
+    Note: Dashboard provides user-specific hosts like {shard}.{region}.thordata.net
     """
 
     DEFAULT = "pr.thordata.net"
     NORTH_AMERICA = "t.na.thordata.net"
     EUROPE = "t.eu.thordata.net"
-    GATE = "gate.thordata.com"
 
 
 class ProxyPort(IntEnum):
@@ -47,11 +48,10 @@ class ProxyPort(IntEnum):
     Available proxy gateway ports.
     """
 
-    DEFAULT = 9999
+    RESIDENTIAL = 9999
     MOBILE = 5555
     DATACENTER = 7777
     ISP = 6666
-    ALTERNATIVE = 22225
 
 
 # =============================================================================

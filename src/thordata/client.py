@@ -87,8 +87,8 @@ class ThordataClient:
     # API Endpoints
     BASE_URL = "https://scraperapi.thordata.com"
     UNIVERSAL_URL = "https://universalapi.thordata.com"
-    API_URL = "https://api.thordata.com/api/web-scraper-api"
-    LOCATIONS_URL = "https://api.thordata.com/api/locations"
+    API_URL = "https://openapi.thordata.com/api/web-scraper-api"
+    LOCATIONS_URL = "https://openapi.thordata.com/api/locations"
 
     def __init__(
         self,
