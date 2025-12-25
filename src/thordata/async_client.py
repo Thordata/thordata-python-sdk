@@ -121,6 +121,10 @@ class AsyncThordataClient:
         self.public_token = public_token
         self.public_key = public_key
 
+        # Automatic Fallback Logic: If sign/api_key is not provided, try using public_token/key
+        self.sign = sign or os.getenv("THORDATA_SIGN") or self.public_token
+        self.api_key = api_key or os.getenv("THORDATA_API_KEY") or self.public_key
+
         # Public API authentication
         self.sign = sign or os.getenv("THORDATA_SIGN")
         self.api_key = api_key or os.getenv("THORDATA_API_KEY")
