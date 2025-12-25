@@ -2,8 +2,8 @@
 Tests for ThordataClient error handling.
 """
 
-import json
 from typing import Any, Dict
+from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
@@ -33,6 +33,8 @@ class DummyResponse:
 
     @property
     def text(self) -> str:
+        import json
+
         return json.dumps(self._json_data)
 
     @property
@@ -49,20 +51,18 @@ def _make_client() -> ThordataClient:
     )
 
 
-def test_universal_scrape_rate_limit_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_universal_scrape_rate_limit_error() -> None:
     """
     When Universal API returns JSON with code=402, the client should raise
     ThordataRateLimitError instead of a generic Exception.
     """
     client = _make_client()
 
-    def fake_post(self, url, data=None, headers=None, timeout=None):
-        return DummyResponse({"code": 402, "msg": "Insufficient balance"})
+    mock_response = DummyResponse({"code": 402, "msg": "Insufficient balance"})
 
-    monkeypatch.setattr(requests.Session, "post", fake_post, raising=True)
-
-    with pytest.raises(ThordataRateLimitError) as exc_info:
-        client.universal_scrape("https://example.com")
+    with patch.object(client, "_api_request_with_retry", return_value=mock_response):
+        with pytest.raises(ThordataRateLimitError) as exc_info:
+            client.universal_scrape("https://example.com")
 
     err = exc_info.value
     assert err.code == 402
@@ -70,25 +70,23 @@ def test_universal_scrape_rate_limit_error(monkeypatch: pytest.MonkeyPatch) -> N
     assert err.payload.get("msg") == "Insufficient balance"
 
 
-def test_create_scraper_task_auth_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_create_scraper_task_auth_error() -> None:
     """
     When Web Scraper API returns JSON with code=401, the client should raise
     ThordataAuthError.
     """
     client = _make_client()
 
-    def fake_post(self, url, data=None, headers=None, timeout=None):
-        return DummyResponse({"code": 401, "msg": "Unauthorized"})
+    mock_response = DummyResponse({"code": 401, "msg": "Unauthorized"})
 
-    monkeypatch.setattr(requests.Session, "post", fake_post, raising=True)
-
-    with pytest.raises(ThordataAuthError) as exc_info:
-        client.create_scraper_task(
-            file_name="test.json",
-            spider_id="dummy-spider",
-            spider_name="example.com",
-            parameters={"foo": "bar"},  # 注意：参数名改为 parameters
-        )
+    with patch.object(client, "_api_request_with_retry", return_value=mock_response):
+        with pytest.raises(ThordataAuthError) as exc_info:
+            client.create_scraper_task(
+                file_name="test.json",
+                spider_id="dummy-spider",
+                spider_name="example.com",
+                parameters={"foo": "bar"},
+            )
 
     err = exc_info.value
     assert err.code == 401

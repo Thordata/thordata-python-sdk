@@ -98,6 +98,7 @@ class ThordataClient:
         proxy_host: str = "pr.thordata.net",
         proxy_port: int = 9999,
         timeout: int = 30,
+        api_timeout: int = 60,
         retry_config: Optional[RetryConfig] = None,
         scraperapi_base_url: Optional[str] = None,
         universalapi_base_url: Optional[str] = None,
@@ -116,6 +117,10 @@ class ThordataClient:
         self._proxy_host = proxy_host
         self._proxy_port = proxy_port
         self._default_timeout = timeout
+
+        # Timeout configuration
+        self._default_timeout = timeout
+        self._api_timeout = api_timeout
 
         # Retry configuration
         self._retry_config = retry_config or RetryConfig()
@@ -176,6 +181,7 @@ class ThordataClient:
         self._status_url = f"{web_scraper_api_base}/tasks-status"
         self._download_url = f"{web_scraper_api_base}/tasks-download"
         self._locations_base_url = locations_base
+        self._list_url = f"{web_scraper_api_base}/tasks-list"
 
     # =========================================================================
     # Proxy Network Methods
@@ -257,6 +263,8 @@ class ThordataClient:
 
     def build_proxy_url(
         self,
+        username: str,  # Required
+        password: str,  # Required
         *,
         country: Optional[str] = None,
         state: Optional[str] = None,
@@ -288,8 +296,8 @@ class ThordataClient:
             >>> requests.get("https://example.com", proxies=proxies)
         """
         config = ProxyConfig(
-            username=self.scraper_token,
-            password="",
+            username=username,
+            password=password,
             host=self._proxy_host,
             port=self._proxy_port,
             product=product,
@@ -300,6 +308,39 @@ class ThordataClient:
             session_duration=session_duration,
         )
         return config.build_proxy_url()
+
+    def _api_request_with_retry(
+        self,
+        method: str,
+        url: str,
+        *,
+        data: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> requests.Response:
+        """Make an API request with automatic retry on transient failures."""
+
+        @with_retry(self._retry_config)
+        def _do_request() -> requests.Response:
+            return self._api_session.request(
+                method,
+                url,
+                data=data,
+                headers=headers,
+                params=params,
+                timeout=self._api_timeout,
+            )
+
+        try:
+            return _do_request()
+        except requests.Timeout as e:
+            raise ThordataTimeoutError(
+                f"API request timed out: {e}", original_error=e
+            ) from e
+        except requests.RequestException as e:
+            raise ThordataNetworkError(
+                f"API request failed: {e}", original_error=e
+            ) from e
 
     # =========================================================================
     # SERP API Methods
@@ -377,14 +418,16 @@ class ThordataClient:
         payload = request.to_payload()
         headers = build_auth_headers(self.scraper_token)
 
-        logger.info(f"SERP Search: {engine_str} - {query}")
+        logger.info(
+            f"SERP Search: {engine_str} - {query[:50]}{'...' if len(query) > 50 else ''}"
+        )
 
         try:
-            response = self._api_session.post(
+            response = self._api_request_with_retry(
+                "POST",
                 self._serp_url,
                 data=payload,
                 headers=headers,
-                timeout=60,
             )
             response.raise_for_status()
 
@@ -447,14 +490,16 @@ class ThordataClient:
         payload = request.to_payload()
         headers = build_auth_headers(self.scraper_token)
 
-        logger.info(f"SERP Advanced Search: {request.engine} - {request.query}")
+        logger.info(
+            f"SERP Advanced Search: {request.engine} - {request.query[:50]}{'...' if len(request.query) > 50 else ''}"
+        )
 
         try:
-            response = self._api_session.post(
+            response = self._api_request_with_retry(
+                "POST",
                 self._serp_url,
                 data=payload,
                 headers=headers,
-                timeout=60,
             )
             response.raise_for_status()
 
@@ -566,11 +611,11 @@ class ThordataClient:
         )
 
         try:
-            response = self._api_session.post(
+            response = self._api_request_with_retry(
+                "POST",
                 self._universal_url,
                 data=payload,
                 headers=headers,
-                timeout=60,
             )
             response.raise_for_status()
 
@@ -679,11 +724,11 @@ class ThordataClient:
         logger.info(f"Creating Scraper Task: {config.spider_name}")
 
         try:
-            response = self._api_session.post(
+            response = self._api_request_with_retry(
+                "POST",
                 self._builder_url,
                 data=payload,
                 headers=headers,
-                timeout=30,
             )
             response.raise_for_status()
 
@@ -721,11 +766,11 @@ class ThordataClient:
         payload = {"tasks_ids": task_id}
 
         try:
-            response = self._api_session.post(
+            response = self._api_request_with_retry(
+                "POST",
                 self._status_url,
                 data=payload,
                 headers=headers,
-                timeout=30,
             )
             response.raise_for_status()
             data = response.json()
@@ -788,11 +833,11 @@ class ThordataClient:
         logger.info(f"Getting result URL for Task: {task_id}")
 
         try:
-            response = self._api_session.post(
+            response = self._api_request_with_retry(
+                "POST",
                 self._download_url,
                 data=payload,
                 headers=headers,
-                timeout=30,
             )
             response.raise_for_status()
 
@@ -811,6 +856,57 @@ class ThordataClient:
             raise ThordataNetworkError(
                 f"Get result failed: {e}", original_error=e
             ) from e
+
+    def list_tasks(
+        self,
+        page: int = 1,
+        size: int = 20,
+    ) -> Dict[str, Any]:
+        """
+        List all Web Scraper tasks.
+
+        Args:
+            page: Page number (starts from 1).
+            size: Number of tasks per page.
+
+        Returns:
+            Dict containing 'count' and 'list' of tasks.
+
+        Example:
+            >>> result = client.list_tasks(page=1, size=10)
+            >>> print(f"Total tasks: {result['count']}")
+            >>> for task in result['list']:
+            ...     print(f"Task {task['task_id']}: {task['status']}")
+        """
+        self._require_public_credentials()
+
+        headers = build_public_api_headers(
+            self.public_token or "", self.public_key or ""
+        )
+        payload: Dict[str, Any] = {}
+        if page:
+            payload["page"] = str(page)
+        if size:
+            payload["size"] = str(size)
+
+        logger.info(f"Listing tasks: page={page}, size={size}")
+
+        response = self._api_request_with_retry(
+            "POST",
+            self._list_url,
+            data=payload,
+            headers=headers,
+        )
+        response.raise_for_status()
+
+        data = response.json()
+        code = data.get("code")
+
+        if code != 200:
+            msg = extract_error_message(data)
+            raise_for_code(f"List tasks failed: {msg}", code=code, payload=data)
+
+        return data.get("data", {"count": 0, "list": []})
 
     def wait_for_task(
         self,
@@ -978,7 +1074,11 @@ class ThordataClient:
         logger.debug(f"Locations API request: {url}")
 
         # Use requests.get directly (no proxy needed for this API)
-        response = self._api_session.get(url, params=params, timeout=30)
+        response = self._api_request_with_retry(
+            "GET",
+            url,
+            params=params,
+        )
         response.raise_for_status()
 
         data = response.json()

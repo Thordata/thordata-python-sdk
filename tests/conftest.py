@@ -2,9 +2,11 @@
 Pytest configuration and fixtures for Thordata SDK tests.
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
+
+from thordata import ThordataClient
 
 
 @pytest.fixture
@@ -22,6 +24,7 @@ def mock_response():
     """Create a mock requests.Response object."""
     response = MagicMock()
     response.status_code = 200
+    response.raise_for_status = MagicMock()
     response.json.return_value = {"code": 200, "data": {}}
     response.text = "<html></html>"
     response.content = b"<html></html>"
@@ -36,3 +39,13 @@ def mock_session(mock_response):
     session.post.return_value = mock_response
     session.request.return_value = mock_response
     return session
+
+
+@pytest.fixture
+def client(mock_credentials):
+    """Create a ThordataClient for testing."""
+    return ThordataClient(
+        scraper_token=mock_credentials["scraper_token"],
+        public_token=mock_credentials["public_token"],
+        public_key=mock_credentials["public_key"],
+    )

@@ -2,7 +2,7 @@
 Tests for thordata.client module.
 """
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -57,9 +57,16 @@ class TestClientMethods:
 
     def test_build_proxy_url(self, client):
         """Test build_proxy_url method."""
-        url = client.build_proxy_url(country="us", city="seattle")
+        url = client.build_proxy_url(
+            username="testuser",
+            password="testpass",
+            country="us",
+            city="seattle",
+        )
+        assert "td-customer-testuser" in url
         assert "country-us" in url
         assert "city-seattle" in url
+        assert "testpass" in url
 
     @patch.object(ThordataClient, "_get_locations")
     def test_list_countries(self, mock_get_locations, client):
@@ -80,3 +87,28 @@ class TestClientMethods:
 
         with pytest.raises(ThordataConfigError, match="public_token and public_key"):
             client.get_task_status("some_task_id")
+
+    def test_list_tasks(self, client):
+        """Test list_tasks method."""
+        # Mock the _api_request_with_retry method directly
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {
+            "code": 200,
+            "data": {
+                "count": 5,
+                "list": [
+                    {"task_id": "task_1", "status": "ready"},
+                    {"task_id": "task_2", "status": "running"},
+                ],
+            },
+        }
+
+        with patch.object(
+            client, "_api_request_with_retry", return_value=mock_response
+        ):
+            result = client.list_tasks(page=1, size=10)
+
+        assert result["count"] == 5
+        assert len(result["list"]) == 2

@@ -89,6 +89,7 @@ class AsyncThordataClient:
         proxy_host: str = "pr.thordata.net",
         proxy_port: int = 9999,
         timeout: int = 30,
+        api_timeout: int = 60,
         retry_config: Optional[RetryConfig] = None,
         scraperapi_base_url: Optional[str] = None,
         universalapi_base_url: Optional[str] = None,
@@ -107,6 +108,10 @@ class AsyncThordataClient:
         self._proxy_host = proxy_host
         self._proxy_port = proxy_port
         self._default_timeout = aiohttp.ClientTimeout(total=timeout)
+
+        # Timeout configuration
+        self._default_timeout = aiohttp.ClientTimeout(total=timeout)
+        self._api_timeout = aiohttp.ClientTimeout(total=api_timeout)
 
         # Retry configuration
         self._retry_config = retry_config or RetryConfig()
@@ -148,6 +153,7 @@ class AsyncThordataClient:
         self._status_url = f"{web_scraper_api_base}/tasks-status"
         self._download_url = f"{web_scraper_api_base}/tasks-download"
         self._locations_base_url = locations_base
+        self._list_url = f"{web_scraper_api_base}/tasks-list"
 
         # Session initialized lazily
         self._session: Optional[aiohttp.ClientSession] = None
@@ -156,7 +162,7 @@ class AsyncThordataClient:
         """Async context manager entry."""
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(
-                timeout=self._default_timeout,
+                timeout=self._api_timeout,
                 trust_env=True,
                 headers={"User-Agent": build_user_agent(_sdk_version, "aiohttp")},
             )
@@ -665,6 +671,61 @@ class AsyncThordataClient:
         except aiohttp.ClientError as e:
             raise ThordataNetworkError(
                 f"Get result failed: {e}", original_error=e
+            ) from e
+
+    async def list_tasks(
+        self,
+        page: int = 1,
+        size: int = 20,
+    ) -> Dict[str, Any]:
+        """
+        List all Web Scraper tasks.
+
+        Args:
+            page: Page number (starts from 1).
+            size: Number of tasks per page.
+
+        Returns:
+            Dict containing 'count' and 'list' of tasks.
+        """
+        self._require_public_credentials()
+        session = self._get_session()
+
+        headers = build_public_api_headers(
+            self.public_token or "", self.public_key or ""
+        )
+        payload: Dict[str, Any] = {}
+        if page:
+            payload["page"] = str(page)
+        if size:
+            payload["size"] = str(size)
+
+        logger.info(f"Async listing tasks: page={page}, size={size}")
+
+        try:
+            async with session.post(
+                self._list_url,
+                data=payload,
+                headers=headers,
+                timeout=self._api_timeout,
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+
+                code = data.get("code")
+                if code != 200:
+                    msg = extract_error_message(data)
+                    raise_for_code(f"List tasks failed: {msg}", code=code, payload=data)
+
+                return data.get("data", {"count": 0, "list": []})
+
+        except asyncio.TimeoutError as e:
+            raise ThordataTimeoutError(
+                f"List tasks timed out: {e}", original_error=e
+            ) from e
+        except aiohttp.ClientError as e:
+            raise ThordataNetworkError(
+                f"List tasks failed: {e}", original_error=e
             ) from e
 
     async def wait_for_task(

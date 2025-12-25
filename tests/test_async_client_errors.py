@@ -2,10 +2,9 @@
 Tests for AsyncThordataClient error handling.
 """
 
-import json
 from typing import Any, Dict
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
-import aiohttp
 import pytest
 
 from thordata import (
@@ -15,7 +14,7 @@ from thordata import (
 )
 
 
-class DummyResponse:
+class DummyAsyncResponse:
     """
     Minimal async fake response object for aiohttp.
     """
@@ -24,21 +23,14 @@ class DummyResponse:
         self._json_data = json_data
         self.status = status
 
-    async def __aenter__(self) -> "DummyResponse":
+    async def __aenter__(self) -> "DummyAsyncResponse":
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
         return None
 
     def raise_for_status(self) -> None:
-        if 400 <= self.status:
-            raise aiohttp.ClientResponseError(
-                request_info=None,
-                history=(),
-                status=self.status,
-                message="",
-                headers=None,
-            )
+        pass
 
     async def json(self) -> Dict[str, Any]:
         return self._json_data
@@ -47,13 +39,13 @@ class DummyResponse:
         return b""
 
     async def text(self) -> str:
+        import json
+
         return json.dumps(self._json_data)
 
 
 @pytest.mark.asyncio
-async def test_async_universal_scrape_rate_limit_error(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_async_universal_scrape_rate_limit_error() -> None:
     """
     When Universal API returns JSON with code=402, the async client should raise
     ThordataRateLimitError.
@@ -64,11 +56,14 @@ async def test_async_universal_scrape_rate_limit_error(
         public_key="PUBLIC_KEY",
     )
 
-    class FakeSession:
-        def post(self, url, data=None, headers=None, timeout=None):
-            return DummyResponse({"code": 402, "msg": "Insufficient balance"})
+    # Create a mock session with closed=False
+    mock_session = MagicMock()
+    mock_session.closed = False  # Explicitly set closed to False
+    mock_response = DummyAsyncResponse({"code": 402, "msg": "Insufficient balance"})
+    mock_session.post.return_value = mock_response
 
-    monkeypatch.setattr(client, "_get_session", lambda: FakeSession())
+    # Manually set the session
+    client._session = mock_session
 
     with pytest.raises(ThordataRateLimitError) as exc_info:
         await client.universal_scrape("https://example.com")
@@ -80,9 +75,7 @@ async def test_async_universal_scrape_rate_limit_error(
 
 
 @pytest.mark.asyncio
-async def test_async_create_scraper_task_auth_error(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_async_create_scraper_task_auth_error() -> None:
     """
     When Web Scraper API returns JSON with code=401, the async client should raise
     ThordataAuthError.
@@ -93,18 +86,21 @@ async def test_async_create_scraper_task_auth_error(
         public_key="PUBLIC_KEY",
     )
 
-    class FakeSession:
-        def post(self, url, data=None, headers=None, timeout=None):
-            return DummyResponse({"code": 401, "msg": "Unauthorized"})
+    # Create a mock session with closed=False
+    mock_session = MagicMock()
+    mock_session.closed = False  # Explicitly set closed to False
+    mock_response = DummyAsyncResponse({"code": 401, "msg": "Unauthorized"})
+    mock_session.post.return_value = mock_response
 
-    monkeypatch.setattr(client, "_get_session", lambda: FakeSession())
+    # Manually set the session
+    client._session = mock_session
 
     with pytest.raises(ThordataAuthError) as exc_info:
         await client.create_scraper_task(
             file_name="test.json",
             spider_id="dummy-spider",
             spider_name="example.com",
-            parameters={"foo": "bar"},  # 注意：参数名改为 parameters
+            parameters={"foo": "bar"},
         )
 
     err = exc_info.value
