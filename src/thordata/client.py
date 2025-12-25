@@ -32,6 +32,7 @@ import requests
 from . import __version__ as _sdk_version
 from ._utils import (
     build_auth_headers,
+    build_builder_headers,
     build_public_api_headers,
     build_user_agent,
     decode_base64_image,
@@ -46,11 +47,13 @@ from .exceptions import (
     raise_for_code,
 )
 from .models import (
+    CommonSettings,
     ProxyConfig,
     ProxyProduct,
     ScraperTaskConfig,
     SerpRequest,
     UniversalScrapeRequest,
+    VideoTaskConfig,
 )
 from .retry import RetryConfig, with_retry
 
@@ -177,6 +180,7 @@ class ThordataClient:
 
         self._serp_url = f"{scraperapi_base}/request"
         self._builder_url = f"{scraperapi_base}/builder"
+        self._video_builder_url = f"{scraperapi_base}/video_builder"
         self._universal_url = f"{universalapi_base}/request"
         self._status_url = f"{web_scraper_api_base}/tasks-status"
         self._download_url = f"{web_scraper_api_base}/tasks-download"
@@ -718,8 +722,16 @@ class ThordataClient:
         Returns:
             The created task_id.
         """
+        self._require_public_credentials()
+
         payload = config.to_payload()
-        headers = build_auth_headers(self.scraper_token)
+
+        # Builder needs 3 headers: token, key, Authorization Bearer
+        headers = build_builder_headers(
+            self.scraper_token,
+            self.public_token or "",
+            self.public_key or "",
+        )
 
         logger.info(f"Creating Scraper Task: {config.spider_name}")
 
@@ -745,6 +757,94 @@ class ThordataClient:
             raise ThordataNetworkError(
                 f"Task creation failed: {e}", original_error=e
             ) from e
+
+    def create_video_task(
+        self,
+        file_name: str,
+        spider_id: str,
+        spider_name: str,
+        parameters: Dict[str, Any],
+        common_settings: "CommonSettings",
+    ) -> str:
+        """
+        Create a YouTube video/audio download task.
+
+        Uses the /video_builder endpoint.
+
+        Args:
+            file_name: Output file name. Supports {{TasksID}}, {{VideoID}}.
+            spider_id: Spider identifier (e.g., "youtube_video_by-url").
+            spider_name: Spider name (typically "youtube.com").
+            parameters: Spider parameters (e.g., {"url": "..."}).
+            common_settings: Video/audio settings.
+
+        Returns:
+            The created task_id.
+
+        Example:
+            >>> from thordata import CommonSettings
+            >>> task_id = client.create_video_task(
+            ...     file_name="{{VideoID}}",
+            ...     spider_id="youtube_video_by-url",
+            ...     spider_name="youtube.com",
+            ...     parameters={"url": "https://youtube.com/watch?v=xxx"},
+            ...     common_settings=CommonSettings(
+            ...         resolution="1080p",
+            ...         is_subtitles="true"
+            ...     )
+            ... )
+        """
+
+        config = VideoTaskConfig(
+            file_name=file_name,
+            spider_id=spider_id,
+            spider_name=spider_name,
+            parameters=parameters,
+            common_settings=common_settings,
+        )
+
+        return self.create_video_task_advanced(config)
+
+    def create_video_task_advanced(self, config: VideoTaskConfig) -> str:
+        """
+        Create a video task using VideoTaskConfig object.
+
+        Args:
+            config: Video task configuration.
+
+        Returns:
+            The created task_id.
+        """
+
+        self._require_public_credentials()
+
+        payload = config.to_payload()
+        headers = build_builder_headers(
+            self.scraper_token,
+            self.public_token or "",
+            self.public_key or "",
+        )
+
+        logger.info(f"Creating Video Task: {config.spider_name} - {config.spider_id}")
+
+        response = self._api_request_with_retry(
+            "POST",
+            self._video_builder_url,
+            data=payload,
+            headers=headers,
+        )
+        response.raise_for_status()
+
+        data = response.json()
+        code = data.get("code")
+
+        if code != 200:
+            msg = extract_error_message(data)
+            raise_for_code(
+                f"Video task creation failed: {msg}", code=code, payload=data
+            )
+
+        return data["data"]["task_id"]
 
     def get_task_status(self, task_id: str) -> str:
         """

@@ -795,6 +795,126 @@ class ScraperTaskConfig:
         return payload
 
 
+@dataclass
+class CommonSettings:
+    """
+    Common settings for YouTube video/audio downloads.
+
+    Used by /video_builder endpoint as `common_settings` parameter.
+    Also known as `spider_universal` in some documentation.
+
+    Args:
+        resolution: Video resolution (360p/480p/720p/1080p/1440p/2160p).
+        audio_format: Audio format (opus/mp3).
+        bitrate: Audio bitrate (48/64/128/160/256/320 or with Kbps suffix).
+        is_subtitles: Whether to download subtitles ("true"/"false").
+        subtitles_language: Subtitle language code (e.g., "en", "zh-Hans").
+
+    Example for video:
+        >>> settings = CommonSettings(
+        ...     resolution="1080p",
+        ...     is_subtitles="true",
+        ...     subtitles_language="en"
+        ... )
+
+    Example for audio:
+        >>> settings = CommonSettings(
+        ...     audio_format="mp3",
+        ...     bitrate="320",
+        ...     is_subtitles="true",
+        ...     subtitles_language="en"
+        ... )
+    """
+
+    # Video settings
+    resolution: Optional[str] = None
+
+    # Audio settings
+    audio_format: Optional[str] = None
+    bitrate: Optional[str] = None
+
+    # Subtitle settings (used by both video and audio)
+    is_subtitles: Optional[str] = None
+    subtitles_language: Optional[str] = None
+
+    # Valid values for validation
+    VALID_RESOLUTIONS = {"360p", "480p", "720p", "1080p", "1440p", "2160p"}
+    VALID_AUDIO_FORMATS = {"opus", "mp3"}
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary, excluding None values."""
+        result = {}
+        if self.resolution is not None:
+            result["resolution"] = self.resolution
+        if self.audio_format is not None:
+            result["audio_format"] = self.audio_format
+        if self.bitrate is not None:
+            result["bitrate"] = self.bitrate
+        if self.is_subtitles is not None:
+            result["is_subtitles"] = self.is_subtitles
+        if self.subtitles_language is not None:
+            result["subtitles_language"] = self.subtitles_language
+        return result
+
+    def to_json(self) -> str:
+        """Convert to JSON string for form submission."""
+        return json.dumps(self.to_dict())
+
+
+@dataclass
+class VideoTaskConfig:
+    """
+    Configuration for creating a YouTube video/audio download task.
+
+    Uses the /video_builder endpoint.
+
+    Args:
+        file_name: Name for the output file. Supports {{TasksID}}, {{VideoID}}.
+        spider_id: Spider identifier (e.g., "youtube_video_by-url", "youtube_audio_by-url").
+        spider_name: Spider name (typically "youtube.com").
+        parameters: Spider-specific parameters (e.g., video URL).
+        common_settings: Video/audio settings (resolution, format, subtitles).
+        include_errors: Include error details in output.
+
+    Example:
+        >>> config = VideoTaskConfig(
+        ...     file_name="{{VideoID}}",
+        ...     spider_id="youtube_video_by-url",
+        ...     spider_name="youtube.com",
+        ...     parameters={"url": "https://www.youtube.com/watch?v=xxx"},
+        ...     common_settings=CommonSettings(
+        ...         resolution="1080p",
+        ...         is_subtitles="true",
+        ...         subtitles_language="en"
+        ...     )
+        ... )
+    """
+
+    file_name: str
+    spider_id: str
+    spider_name: str
+    parameters: Dict[str, Any]
+    common_settings: CommonSettings
+    include_errors: bool = True
+
+    def to_payload(self) -> Dict[str, Any]:
+        """
+        Convert to API request payload.
+
+        Returns:
+            Dictionary ready to be sent to the video_builder API.
+        """
+        payload: Dict[str, Any] = {
+            "file_name": self.file_name,
+            "spider_id": self.spider_id,
+            "spider_name": self.spider_name,
+            "spider_parameters": json.dumps([self.parameters]),
+            "spider_errors": "true" if self.include_errors else "false",
+            "common_settings": self.common_settings.to_json(),
+        }
+        return payload
+
+
 # =============================================================================
 # Response Models
 # =============================================================================

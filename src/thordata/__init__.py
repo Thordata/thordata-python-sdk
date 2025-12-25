@@ -78,6 +78,7 @@ from .exceptions import (
 
 # Models
 from .models import (
+    CommonSettings,
     ProxyConfig,
     ProxyProduct,
     ScraperTaskConfig,
@@ -86,6 +87,7 @@ from .models import (
     StickySession,
     TaskStatusResponse,
     UniversalScrapeRequest,
+    VideoTaskConfig,
 )
 
 # Retry utilities
@@ -122,6 +124,8 @@ __all__ = [
     "SerpRequest",
     "UniversalScrapeRequest",
     "ScraperTaskConfig",
+    "CommonSettings",
+    "VideoTaskConfig",
     "TaskStatusResponse",
     # Exceptions
     "ThordataError",

@@ -86,6 +86,35 @@ def build_auth_headers(token: str) -> Dict[str, str]:
     }
 
 
+def build_builder_headers(
+    scraper_token: str,
+    public_token: str,
+    public_key: str,
+) -> Dict[str, str]:
+    """
+    Build headers for Web Scraper builder API.
+
+    Builder requires THREE auth headers per official docs:
+    - token: public token
+    - key: public key
+    - Authorization: Bearer scraper_token
+
+    Args:
+        scraper_token: The scraper API token.
+        public_token: The public API token.
+        public_key: The public API key.
+
+    Returns:
+        Headers dict with all required auth headers.
+    """
+    return {
+        "token": public_token,
+        "key": public_key,
+        "Authorization": f"Bearer {scraper_token}",
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+
+
 def build_public_api_headers(public_token: str, public_key: str) -> Dict[str, str]:
     """
     Build headers for public API requests (task status, locations, etc.)
