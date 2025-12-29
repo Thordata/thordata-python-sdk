@@ -17,8 +17,6 @@ Available tests:
     - proxy_users: Proxy user management
     - whitelist: IP whitelist management
     - proxy_servers: ISP/DC proxy list
-    - api_new_balance: Public API NEW - residential balance
-    - api_new_isp: Public API NEW - ISP proxies
 """
 
 import argparse
@@ -154,52 +152,6 @@ def test_proxy_servers(client: ThordataClient) -> bool:
         return False
 
 
-def test_api_new_balance(client: ThordataClient) -> bool:
-    """Test Public API NEW - residential balance."""
-    print("\n" + "=" * 60)
-    print("Testing: Public API NEW - Residential Balance")
-    print("=" * 60)
-
-    try:
-        result = client.get_residential_balance()
-
-        balance_gb = result["balance"] / (1024**3)
-        print("✅ Residential Balance Retrieved:")
-        print(f"   Balance: {balance_gb:.2f} GB")
-        print(f"   Expire Time: {result.get('expire_time')}")
-        return True
-    except Exception as e:
-        print(f"❌ Failed (requires sign/apiKey): {e}")
-        return False
-
-
-def test_api_new_isp(client: ThordataClient) -> bool:
-    """Test Public API NEW - ISP proxies."""
-    print("\n" + "=" * 60)
-    print("Testing: Public API NEW - ISP Proxies")
-    print("=" * 60)
-
-    try:
-        regions = client.get_isp_regions()
-
-        print("✅ ISP Regions Retrieved:")
-        print(f"   Total Regions: {len(regions)}")
-
-        for region in regions[:3]:
-            print(
-                f"   {region.get('country')}/{region.get('city')}: {region.get('num')} IPs"
-            )
-
-        # Try listing ISP proxies
-        proxies = client.list_isp_proxies()
-        print(f"\n   ISP Proxies: {len(proxies)} proxies")
-
-        return True
-    except Exception as e:
-        print(f"❌ Failed (requires sign/apiKey): {e}")
-        return False
-
-
 def main():
     parser = argparse.ArgumentParser(description="Verify new Thordata SDK features")
     parser.add_argument(
@@ -210,8 +162,6 @@ def main():
             "proxy_users",
             "whitelist",
             "proxy_servers",
-            "api_new_balance",
-            "api_new_isp",
             "all",
         ],
         default="all",
@@ -225,10 +175,6 @@ def main():
     public_token = os.getenv("THORDATA_PUBLIC_TOKEN")
     public_key = os.getenv("THORDATA_PUBLIC_KEY")
 
-    # Fallback Allowed: If SIGN/API_KEY is not set, use PUBLIC_TOKEN/KEY
-    sign = os.getenv("THORDATA_SIGN") or public_token
-    api_key = os.getenv("THORDATA_API_KEY") or public_key
-
     if not scraper_token:
         print("❌ Error: THORDATA_SCRAPER_TOKEN is required")
         return 1
@@ -240,16 +186,12 @@ def main():
     print(f"  SCRAPER_TOKEN: {'✓' if scraper_token else '✗'}")
     print(f"  PUBLIC_TOKEN:  {'✓' if public_token else '✗'}")
     print(f"  PUBLIC_KEY:    {'✓' if public_key else '✗'}")
-    print(f"  SIGN:          {'✓' if sign else '✗'} (for API NEW)")
-    print(f"  API_KEY:       {'✓' if api_key else '✗'} (for API NEW)")
 
     # Create client
     client = ThordataClient(
         scraper_token=scraper_token,
         public_token=public_token,
         public_key=public_key,
-        sign=sign,
-        api_key=api_key,
     )
 
     # Test map
@@ -259,8 +201,6 @@ def main():
         "proxy_users": test_proxy_users,
         "whitelist": test_whitelist,
         "proxy_servers": test_proxy_servers,
-        "api_new_balance": test_api_new_balance,
-        "api_new_isp": test_api_new_isp,
     }
 
     # Run tests
