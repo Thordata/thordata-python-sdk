@@ -16,6 +16,7 @@ Example:
 
 from __future__ import annotations
 
+import inspect
 import logging
 import random
 import time
@@ -201,7 +202,6 @@ def with_retry(
 
         @wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-            import asyncio
 
             last_exception: Optional[Exception] = None
 
@@ -238,7 +238,7 @@ def with_retry(
         # Check if the function is async
         import asyncio
 
-        if asyncio.iscoroutinefunction(func):
+        if inspect.iscoroutinefunction(func):
             return async_wrapper
         return sync_wrapper
 

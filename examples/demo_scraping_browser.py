@@ -20,12 +20,13 @@ import asyncio
 import logging
 import os
 import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 
-load_dotenv()
+load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 
 # Scraping Browser WebSocket endpoint
 # Format: wss://td-customer-{USERNAME}:{PASSWORD}@ws-browser.thordata.com

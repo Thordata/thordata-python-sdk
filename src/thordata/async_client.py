@@ -25,7 +25,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from datetime import date, datetime
+from datetime import date
 from typing import Any, Dict, List, Optional, Union
 
 import aiohttp
@@ -35,7 +35,6 @@ from ._utils import (
     build_auth_headers,
     build_builder_headers,
     build_public_api_headers,
-    build_sign_headers,
     build_user_agent,
     decode_base64_image,
     extract_error_message,
@@ -51,14 +50,15 @@ from .exceptions import (
 from .models import (
     CommonSettings,
     ProxyConfig,
+    ProxyProduct,
     ProxyServer,
-    ProxyUser,
     ProxyUserList,
     ScraperTaskConfig,
     SerpRequest,
     UniversalScrapeRequest,
     UsageStatistics,
     VideoTaskConfig,
+    WhitelistProxyConfig,
 )
 from .retry import RetryConfig
 
@@ -100,8 +100,6 @@ class AsyncThordataClient:
         scraper_token: str,
         public_token: Optional[str] = None,
         public_key: Optional[str] = None,
-        sign: Optional[str] = None,
-        api_key: Optional[str] = None,
         proxy_host: str = "pr.thordata.net",
         proxy_port: int = 9999,
         timeout: int = 30,
@@ -121,18 +119,9 @@ class AsyncThordataClient:
         self.public_token = public_token
         self.public_key = public_key
 
-        # Automatic Fallback Logic: If sign/api_key is not provided, try using public_token/key
-        self.sign = sign or os.getenv("THORDATA_SIGN") or self.public_token
-        self.api_key = api_key or os.getenv("THORDATA_API_KEY") or self.public_key
-
-        # Public API authentication
-        self.sign = sign or os.getenv("THORDATA_SIGN")
-        self.api_key = api_key or os.getenv("THORDATA_API_KEY")
-
         # Proxy configuration
         self._proxy_host = proxy_host
         self._proxy_port = proxy_port
-        self._default_timeout = aiohttp.ClientTimeout(total=timeout)
 
         # Timeout configuration
         self._default_timeout = aiohttp.ClientTimeout(total=timeout)
@@ -141,18 +130,12 @@ class AsyncThordataClient:
         # Retry configuration
         self._retry_config = retry_config or RetryConfig()
 
-        # Authentication mode
+        # Authentication mode (for scraping APIs)
         self._auth_mode = auth_mode.lower()
         if self._auth_mode not in ("bearer", "header_token"):
             raise ThordataConfigError(
                 f"Invalid auth_mode: {auth_mode}. Must be 'bearer' or 'header_token'."
             )
-
-        # Pre-calculate proxy auth
-        self._proxy_url = f"http://{proxy_host}:{proxy_port}"
-        self._proxy_auth = aiohttp.BasicAuth(
-            login=f"td-customer-{scraper_token}", password=""
-        )
 
         # Base URLs (allow override via args or env vars for testing and custom routing)
         scraperapi_base = (
@@ -179,6 +162,7 @@ class AsyncThordataClient:
             or self.LOCATIONS_URL
         ).rstrip("/")
 
+        # Keep these env overrides for now
         gateway_base = os.getenv(
             "THORDATA_GATEWAY_BASE_URL", "https://api.thordata.com/api/gateway"
         )
@@ -193,8 +177,11 @@ class AsyncThordataClient:
         self._builder_url = f"{scraperapi_base}/builder"
         self._video_builder_url = f"{scraperapi_base}/video_builder"
         self._universal_url = f"{universalapi_base}/request"
+
         self._status_url = f"{web_scraper_api_base}/tasks-status"
         self._download_url = f"{web_scraper_api_base}/tasks-download"
+        self._list_url = f"{web_scraper_api_base}/tasks-list"
+
         self._locations_base_url = locations_base
         self._usage_stats_url = (
             f"{locations_base.replace('/locations', '')}/account/usage-statistics"
@@ -202,16 +189,17 @@ class AsyncThordataClient:
         self._proxy_users_url = (
             f"{locations_base.replace('/locations', '')}/proxy-users"
         )
+
         whitelist_base = os.getenv(
             "THORDATA_WHITELIST_BASE_URL", "https://api.thordata.com/api"
         )
         self._whitelist_url = f"{whitelist_base}/whitelisted-ips"
+
         proxy_api_base = os.getenv(
             "THORDATA_PROXY_API_BASE_URL", "https://api.thordata.com/api"
         )
         self._proxy_list_url = f"{proxy_api_base}/proxy/proxy-list"
         self._proxy_expiration_url = f"{proxy_api_base}/proxy/expiration-time"
-        self._list_url = f"{web_scraper_api_base}/tasks-list"
 
         # Session initialized lazily
         self._session: Optional[aiohttp.ClientSession] = None
@@ -271,11 +259,26 @@ class AsyncThordataClient:
 
         logger.debug(f"Async Proxy GET: {url}")
 
-        if proxy_config:
-            proxy_url, proxy_auth = proxy_config.to_aiohttp_config()
-        else:
-            proxy_url = self._proxy_url
-            proxy_auth = self._proxy_auth
+        if proxy_config is None:
+            proxy_config = self._get_default_proxy_config_from_env()
+
+        if proxy_config is None:
+            raise ThordataConfigError(
+                "Proxy credentials are missing. "
+                "Pass proxy_config=ProxyConfig(username=..., password=..., product=...) "
+                "or set THORDATA_RESIDENTIAL_USERNAME/THORDATA_RESIDENTIAL_PASSWORD (or DATACENTER/MOBILE)."
+            )
+
+        # aiohttp has limited support for "https://" proxies (TLS to proxy / TLS-in-TLS).
+        # Your account's proxy endpoint requires HTTPS proxy, so we explicitly block here
+        # to avoid confusing "it always fails" behavior.
+        if getattr(proxy_config, "protocol", "http").lower() == "https":
+            raise ThordataConfigError(
+                "Proxy Network requires an HTTPS proxy endpoint (TLS to proxy) for your account. "
+                "aiohttp support for 'https://' proxies is limited and may fail. "
+                "Please use ThordataClient.get/post (sync client) for Proxy Network requests."
+            )
+        proxy_url, proxy_auth = proxy_config.to_aiohttp_config()
 
         try:
             return await session.get(
@@ -312,11 +315,26 @@ class AsyncThordataClient:
 
         logger.debug(f"Async Proxy POST: {url}")
 
-        if proxy_config:
-            proxy_url, proxy_auth = proxy_config.to_aiohttp_config()
-        else:
-            proxy_url = self._proxy_url
-            proxy_auth = self._proxy_auth
+        if proxy_config is None:
+            proxy_config = self._get_default_proxy_config_from_env()
+
+        if proxy_config is None:
+            raise ThordataConfigError(
+                "Proxy credentials are missing. "
+                "Pass proxy_config=ProxyConfig(username=..., password=..., product=...) "
+                "or set THORDATA_RESIDENTIAL_USERNAME/THORDATA_RESIDENTIAL_PASSWORD (or DATACENTER/MOBILE)."
+            )
+
+        # aiohttp has limited support for "https://" proxies (TLS to proxy / TLS-in-TLS).
+        # Your account's proxy endpoint requires HTTPS proxy, so we explicitly block here
+        # to avoid confusing "it always fails" behavior.
+        if getattr(proxy_config, "protocol", "http").lower() == "https":
+            raise ThordataConfigError(
+                "Proxy Network requires an HTTPS proxy endpoint (TLS to proxy) for your account. "
+                "aiohttp support for 'https://' proxies is limited and may fail. "
+                "Please use ThordataClient.get/post (sync client) for Proxy Network requests."
+            )
+        proxy_url, proxy_auth = proxy_config.to_aiohttp_config()
 
         try:
             return await session.post(
@@ -973,23 +991,14 @@ class AsyncThordataClient:
 
     async def get_residential_balance(self) -> Dict[str, Any]:
         """
-        Get residential proxy balance (Public API NEW).
+        Get residential proxy balance.
 
-        Requires sign and apiKey credentials.
-
-        Returns:
-            Dict with 'balance' (bytes) and 'expire_time' (timestamp).
+        Uses public_token/public_key.
         """
-        if not self.sign or not self.api_key:
-            raise ThordataConfigError(
-                "sign and api_key are required for Public API NEW. "
-                "Set THORDATA_SIGN and THORDATA_API_KEY environment variables."
-            )
-
         session = self._get_session()
-        headers = build_sign_headers(self.sign, self.api_key)
+        headers = self._build_gateway_headers()
 
-        logger.info("Async getting residential proxy balance (API NEW)")
+        logger.info("Async getting residential proxy balance")
 
         try:
             async with session.post(
@@ -1025,26 +1034,13 @@ class AsyncThordataClient:
         end_time: Union[str, int],
     ) -> Dict[str, Any]:
         """
-        Get residential proxy usage records (Public API NEW).
+        Get residential proxy usage records.
 
-        Args:
-            start_time: Start timestamp (Unix timestamp or YYYY-MM-DD HH:MM:SS).
-            end_time: End timestamp (Unix timestamp or YYYY-MM-DD HH:MM:SS).
-
-        Returns:
-            Dict with usage data including 'all_flow', 'all_used_flow', 'data' list.
+        Uses public_token/public_key.
         """
-        if not self.sign or not self.api_key:
-            raise ThordataConfigError(
-                "sign and api_key are required for Public API NEW."
-            )
-
         session = self._get_session()
-        headers = build_sign_headers(self.sign, self.api_key)
-        payload = {
-            "start_time": str(start_time),
-            "end_time": str(end_time),
-        }
+        headers = self._build_gateway_headers()
+        payload = {"start_time": str(start_time), "end_time": str(end_time)}
 
         logger.info(f"Async getting residential usage: {start_time} to {end_time}")
 
@@ -1296,20 +1292,14 @@ class AsyncThordataClient:
 
     async def get_isp_regions(self) -> List[Dict[str, Any]]:
         """
-        Get available ISP proxy regions (Public API NEW).
+        Get available ISP proxy regions.
 
-        Returns:
-            List of regions with id, continent, country, city, num, pricing.
+        Uses public_token/public_key.
         """
-        if not self.sign or not self.api_key:
-            raise ThordataConfigError(
-                "sign and api_key are required for Public API NEW."
-            )
-
         session = self._get_session()
-        headers = build_sign_headers(self.sign, self.api_key)
+        headers = self._build_gateway_headers()
 
-        logger.info("Async getting ISP regions (API NEW)")
+        logger.info("Async getting ISP regions")
 
         try:
             async with session.post(
@@ -1341,20 +1331,14 @@ class AsyncThordataClient:
 
     async def list_isp_proxies(self) -> List[Dict[str, Any]]:
         """
-        List ISP proxies (Public API NEW).
+        List ISP proxies.
 
-        Returns:
-            List of ISP proxies with ip, port, user, pwd, startTime, expireTime.
+        Uses public_token/public_key.
         """
-        if not self.sign or not self.api_key:
-            raise ThordataConfigError(
-                "sign and api_key are required for Public API NEW."
-            )
-
         session = self._get_session()
-        headers = build_sign_headers(self.sign, self.api_key)
+        headers = self._build_gateway_headers()
 
-        logger.info("Async listing ISP proxies (API NEW)")
+        logger.info("Async listing ISP proxies")
 
         try:
             async with session.post(
@@ -1386,20 +1370,14 @@ class AsyncThordataClient:
 
     async def get_wallet_balance(self) -> Dict[str, Any]:
         """
-        Get wallet balance for ISP proxies (Public API NEW).
+        Get wallet balance for ISP proxies.
 
-        Returns:
-            Dict with 'walletBalance'.
+        Uses public_token/public_key.
         """
-        if not self.sign or not self.api_key:
-            raise ThordataConfigError(
-                "sign and api_key are required for Public API NEW."
-            )
-
         session = self._get_session()
-        headers = build_sign_headers(self.sign, self.api_key)
+        headers = self._build_gateway_headers()
 
-        logger.info("Async getting wallet balance (API NEW)")
+        logger.info("Async getting wallet balance")
 
         try:
             async with session.post(
@@ -1592,3 +1570,86 @@ class AsyncThordataClient:
                 "public_token and public_key are required for this operation. "
                 "Please provide them when initializing AsyncThordataClient."
             )
+
+    def _get_proxy_endpoint_overrides(
+        self, product: ProxyProduct
+    ) -> tuple[Optional[str], Optional[int], str]:
+        prefix = product.value.upper()
+
+        host = os.getenv(f"THORDATA_{prefix}_PROXY_HOST") or os.getenv(
+            "THORDATA_PROXY_HOST"
+        )
+        port_raw = os.getenv(f"THORDATA_{prefix}_PROXY_PORT") or os.getenv(
+            "THORDATA_PROXY_PORT"
+        )
+        protocol = (
+            os.getenv(f"THORDATA_{prefix}_PROXY_PROTOCOL")
+            or os.getenv("THORDATA_PROXY_PROTOCOL")
+            or "http"
+        )
+
+        port: Optional[int] = None
+        if port_raw:
+            try:
+                port = int(port_raw)
+            except ValueError:
+                port = None
+
+        return host or None, port, protocol
+
+    def _get_default_proxy_config_from_env(self) -> Optional[ProxyConfig]:
+        u = os.getenv("THORDATA_RESIDENTIAL_USERNAME")
+        p = os.getenv("THORDATA_RESIDENTIAL_PASSWORD")
+        if u and p:
+            host, port, protocol = self._get_proxy_endpoint_overrides(
+                ProxyProduct.RESIDENTIAL
+            )
+            return ProxyConfig(
+                username=u,
+                password=p,
+                product=ProxyProduct.RESIDENTIAL,
+                host=host,
+                port=port,
+                protocol=protocol,
+            )
+
+        u = os.getenv("THORDATA_DATACENTER_USERNAME")
+        p = os.getenv("THORDATA_DATACENTER_PASSWORD")
+        if u and p:
+            host, port, protocol = self._get_proxy_endpoint_overrides(
+                ProxyProduct.DATACENTER
+            )
+            return ProxyConfig(
+                username=u,
+                password=p,
+                product=ProxyProduct.DATACENTER,
+                host=host,
+                port=port,
+                protocol=protocol,
+            )
+
+        u = os.getenv("THORDATA_MOBILE_USERNAME")
+        p = os.getenv("THORDATA_MOBILE_PASSWORD")
+        if u and p:
+            host, port, protocol = self._get_proxy_endpoint_overrides(
+                ProxyProduct.MOBILE
+            )
+            return ProxyConfig(
+                username=u,
+                password=p,
+                product=ProxyProduct.MOBILE,
+                host=host,
+                port=port,
+                protocol=protocol,
+            )
+
+        return None
+
+    def _build_gateway_headers(self) -> Dict[str, str]:
+        """
+        Headers for gateway-style endpoints.
+
+        Per our SDK rule: ONLY public_token/public_key exist.
+        """
+        self._require_public_credentials()
+        return build_public_api_headers(self.public_token or "", self.public_key or "")

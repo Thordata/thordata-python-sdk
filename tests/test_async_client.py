@@ -5,7 +5,7 @@ Tests for AsyncThordataClient.
 import aiohttp
 import pytest
 
-# 检查是否安装了 aioresponses
+# check aioresponses
 try:
     from aioresponses import aioresponses
 
@@ -14,6 +14,7 @@ except ImportError:
     HAS_AIORESPONSES = False
 
 from thordata import AsyncThordataClient
+from thordata.exceptions import ThordataConfigError
 
 # Mark all tests in this module as async
 pytestmark = pytest.mark.asyncio
@@ -41,33 +42,26 @@ async def test_async_client_initialization(async_client):
     assert async_client.scraper_token == TEST_SCRAPER
     assert async_client.public_token == TEST_PUB_TOKEN
     assert async_client.public_key == TEST_PUB_KEY
-    assert async_client._proxy_auth is not None
-    assert isinstance(async_client._proxy_auth, aiohttp.BasicAuth)
+
+    # The fixture likely enters async context, so session should exist
+    assert async_client._session is not None
+    assert not async_client._session.closed
 
 
 @pytest.mark.skipif(not HAS_AIORESPONSES, reason="aioresponses not installed")
-async def test_async_successful_request(async_client):
-    """Test successful async proxy request."""
-    mock_url = "http://example.com/async_test"
-    mock_data = {"status": "async_ok"}
+async def test_async_proxy_network_https_not_supported():
+    async with AsyncThordataClient(scraper_token="test_token") as client:
+        with pytest.raises(ThordataConfigError) as exc:
+            await client.get("https://httpbin.org/ip")
 
-    with aioresponses() as m:
-        m.get(mock_url, status=200, payload=mock_data)
-
-        response = await async_client.get(mock_url)
-
-        assert response.status == 200
-        data = await response.json()
-        assert data == mock_data
+        assert "Proxy Network requires an HTTPS proxy endpoint" in str(exc.value)
+        assert "ThordataClient.get/post" in str(exc.value)
 
 
 @pytest.mark.skipif(not HAS_AIORESPONSES, reason="aioresponses not installed")
-async def test_async_http_error_handling(async_client):
-    """Test async HTTP error."""
-    error_url = "http://example.com/async_error"
+async def test_async_http_error_handling():
+    async with AsyncThordataClient(scraper_token="test_token") as client:
+        with pytest.raises(ThordataConfigError) as exc:
+            await client.get("https://httpbin.org/status/404")
 
-    with aioresponses() as m:
-        m.get(error_url, status=401)
-
-        response = await async_client.get(error_url)
-        assert response.status == 401
+        assert "Proxy Network requires an HTTPS proxy endpoint" in str(exc.value)

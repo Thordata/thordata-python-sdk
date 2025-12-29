@@ -26,10 +26,13 @@ from __future__ import annotations
 
 import json
 import re
+import ssl
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
+
+import urllib3
 
 # =============================================================================
 # Proxy Product Types
@@ -137,6 +140,7 @@ class ProxyConfig:
         if self.host is None:
             # Set host based on product type
             host_map = {
+                # User&Pass auth entry (docs examples use t.pr.thordata.net for authenticated proxy)
                 ProxyProduct.RESIDENTIAL: "t.pr.thordata.net",
                 ProxyProduct.DATACENTER: "dc.pr.thordata.net",
                 ProxyProduct.MOBILE: "m.pr.thordata.net",
@@ -233,6 +237,14 @@ class ProxyConfig:
         username = self.build_username()
         return f"{self.protocol}://{username}:{self.password}@{self.host}:{self.port}"
 
+    def build_proxy_endpoint(self) -> str:
+        """Proxy endpoint without credentials, for HTTPS proxy managers."""
+        return f"{self.protocol}://{self.host}:{self.port}"
+
+    def build_proxy_basic_auth(self) -> str:
+        """Basic auth string 'username:password' for Proxy-Authorization."""
+        return f"{self.build_username()}:{self.password}"
+
     def to_proxies_dict(self) -> Dict[str, str]:
         """
         Build a proxies dict suitable for the requests library.
@@ -262,6 +274,39 @@ class ProxyConfig:
             raise ImportError(
                 "aiohttp is required for async proxy configuration"
             ) from e
+
+
+@dataclass
+class WhitelistProxyConfig:
+    """
+    Proxy config for IP-whitelist authentication mode (no username/password).
+
+    In whitelist mode, you do NOT pass proxy auth.
+    You only connect to the proxy entry node (host:port).
+
+    Examples (from docs):
+      - Global random: pr.thordata.net:9999
+      - Country nodes: us-pr.thordata.net:10000, etc.
+    """
+
+    host: str = "pr.thordata.net"
+    port: int = 9999
+    protocol: str = "http"  # use http for proxy scheme; target URL can still be https
+
+    def __post_init__(self) -> None:
+        if self.protocol not in ("http", "https"):
+            raise ValueError("protocol must be 'http' or 'https'")
+
+    def build_proxy_url(self) -> str:
+        return f"{self.protocol}://{self.host}:{self.port}"
+
+    def to_proxies_dict(self) -> Dict[str, str]:
+        url = self.build_proxy_url()
+        return {"http": url, "https": url}
+
+    def to_aiohttp_config(self) -> tuple:
+        # aiohttp: proxy_auth should be None in whitelist mode
+        return self.build_proxy_url(), None
 
 
 @dataclass
@@ -545,9 +590,18 @@ class SerpRequest:
         payload: Dict[str, Any] = {
             "engine": engine,
             "num": str(self.num),
-            # output_format: json=1 for JSON, json=0 for raw HTML
-            "json": "1" if self.output_format.lower() == "json" else "0",
         }
+
+        fmt = self.output_format.lower()
+        if fmt == "json":
+            payload["json"] = "1"
+        elif fmt == "html":
+            # omit "json" to get raw HTML (per docs: no json -> HTML)
+            pass
+        else:
+            # keep backward compatibility: if user passes "2"/"both"/etc.
+            if fmt in ("2", "both", "json+html", "json_html"):
+                payload["json"] = "2"
 
         # Handle query parameter (Yandex uses 'text', others use 'q')
         if engine == "yandex":
@@ -555,13 +609,9 @@ class SerpRequest:
         else:
             payload["q"] = self.query
 
-        # Set URL / domain based on google_domain or engine default
+        # Domain overrides (preferred by docs)
         if self.google_domain:
-            # 显式设置 google_domain 参数，同时设置 url
             payload["google_domain"] = self.google_domain
-            payload["url"] = self.google_domain
-        elif engine in self.ENGINE_URLS:
-            payload["url"] = self.ENGINE_URLS[engine]
 
         # Pagination
         if self.start > 0:

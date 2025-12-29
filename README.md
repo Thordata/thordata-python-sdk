@@ -44,14 +44,10 @@ Set environment variables:
 # Required for Scraper APIs (SERP, Universal, Tasks)
 export THORDATA_SCRAPER_TOKEN=your_token
 
-# Required for Public/Location APIs (Dashboard -> My Account)
+# Public/Location APIs (Dashboard -> My account -> API)
 export THORDATA_PUBLIC_TOKEN=your_public_token
 export THORDATA_PUBLIC_KEY=your_public_key
 
-# Required for Public API NEW (Dashboard -> Public API NEW)
-# If not set, SDK falls back to PUBLIC_TOKEN/KEY
-export THORDATA_SIGN=your_sign
-export THORDATA_API_KEY=your_api_key
 ```
 
 ---

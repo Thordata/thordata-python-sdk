@@ -16,6 +16,7 @@ Usage:
 import logging
 import os
 import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -24,7 +25,7 @@ from thordata import Engine, ThordataClient
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 
 # Load credentials
-load_dotenv()
+load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 
 SCRAPER_TOKEN = os.getenv("THORDATA_SCRAPER_TOKEN")
 COUNTRY = os.getenv("THORDATA_SERP_COUNTRY", "us")

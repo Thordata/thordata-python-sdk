@@ -40,8 +40,12 @@ logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 
 
 def _load_env() -> None:
-    if load_dotenv is not None:
-        load_dotenv()
+    if load_dotenv is None:
+        return
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[1]
+    load_dotenv(dotenv_path=repo_root / ".env")
 
 
 def _print_results(results: dict, result_key: str, alt_keys: list = None) -> int:

@@ -9,13 +9,14 @@ Usage:
 
 import os
 import sys
+from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
 
 from thordata import ProxyConfig, ProxyProduct, StickySession
 
-load_dotenv()
+load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 
 USERNAME = os.getenv("THORDATA_RESIDENTIAL_USERNAME")
 PASSWORD = os.getenv("THORDATA_RESIDENTIAL_PASSWORD")

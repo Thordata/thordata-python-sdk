@@ -37,8 +37,12 @@ def _configure_stdio() -> None:
 
 
 def _load_env() -> None:
-    if load_dotenv is not None:
-        load_dotenv()
+    if load_dotenv is None:
+        return
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[1]
+    load_dotenv(dotenv_path=repo_root / ".env")
 
 
 def _maybe_write_files(html: str, png: bytes) -> None:
