@@ -60,14 +60,31 @@ def demo_create_task(client: ThordataClient) -> Optional[str]:
     print("(Example only - adjust spider_id/spider_name for your use case.)")
 
     try:
+        spider_id = os.getenv("THORDATA_TASK_SPIDER_ID")
+        spider_name = os.getenv("THORDATA_TASK_SPIDER_NAME")
+        file_name = os.getenv("THORDATA_TASK_FILE_NAME") or "demo_task"
+        parameters_json = os.getenv("THORDATA_TASK_PARAMETERS_JSON") or "{}"
+
+        if not spider_id or not spider_name:
+            print("Skipping task creation: set THORDATA_TASK_SPIDER_ID and THORDATA_TASK_SPIDER_NAME in .env")
+            return None
+
+        try:
+            raw = json.loads(parameters_json)
+            if isinstance(raw, list):
+                raw = raw[0] if raw else {}
+            if not isinstance(raw, dict):
+                raise ValueError("parameters must be object or array of objects")
+            parameters = raw
+        except Exception:
+            print("THORDATA_TASK_PARAMETERS_JSON must be valid JSON (object or array of objects)")
+            return None
+
         task_id = client.create_scraper_task(
-            file_name="demo_youtube_data",
-            spider_id="youtube_video-post_by-url",
-            spider_name="youtube.com",
-            parameters={
-                "url": "https://www.youtube.com/@YouTube/videos",
-                "num_of_posts": "5",
-            },
+            file_name=file_name,
+            spider_id=spider_id,
+            spider_name=spider_name,
+            parameters=parameters,
         )
 
         print("Task created.")

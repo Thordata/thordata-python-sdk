@@ -1,0 +1,14 @@
+{
+  "root": "D:\\thordata_work\\thordata-python-sdk",
+  "generated_at": "2025-12-31T10:14:13",
+  "fingerprint": "399ea474b5a06e50e636ff79dde97dcf654a654b",
+  "chunk_bytes": 600000,
+  "max_single_file_bytes": 3000000,
+  "ignore_lock_files": true,
+  "bundle_count": 1,
+  "bundle_files": [
+    "bundle_0001.txt"
+  ],
+  "files_included": 73,
+  "build_seconds": 0.04
+}
