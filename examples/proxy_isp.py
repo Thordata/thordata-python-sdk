@@ -14,6 +14,7 @@ import requests
 from dotenv import load_dotenv
 
 from thordata import StaticISPProxy
+from thordata._example_utils import load_env, skip_if_missing
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 
@@ -23,6 +24,12 @@ PASSWORD = os.getenv("THORDATA_ISP_PASSWORD")
 
 
 def main():
+    load_env()
+    if skip_if_missing(
+        ["THORDATA_SCRAPER_TOKEN"],
+        tip="Proxy example requires THORDATA_SCRAPER_TOKEN (and proxy settings depending on product).",
+    ):
+        return 0
     if not HOST or not USERNAME or not PASSWORD:
         print("Static ISP Proxy Demo - Skipped")
         print(

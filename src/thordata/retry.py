@@ -202,7 +202,6 @@ def with_retry(
 
         @wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-
             last_exception: Optional[Exception] = None
 
             for attempt in range(config.max_retries + 1):

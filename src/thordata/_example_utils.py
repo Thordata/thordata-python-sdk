@@ -49,3 +49,28 @@ def normalize_task_parameters(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ValueError("Task parameters must be a JSON object (or array of objects)")
     return raw
+
+
+def output_dir() -> Path:
+    """Return output dir for examples; defaults to examples/output (ignored by git)."""
+    repo_root = Path(__file__).resolve().parents[2]
+    d = env("THORDATA_OUTPUT_DIR") or str(repo_root / "examples" / "output")
+    p = Path(d)
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def write_text(filename: str, content: str) -> Path:
+    p = output_dir() / filename
+    p.write_text(content, encoding="utf-8", errors="replace")
+    return p
+
+
+def write_json(filename: str, data: Any) -> Path:
+    p = output_dir() / filename
+    p.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+        errors="replace",
+    )
+    return p

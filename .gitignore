@@ -91,3 +91,4 @@ Thumbs.db
 *.log
 secrets.json
 .secrets/
+examples/output/
