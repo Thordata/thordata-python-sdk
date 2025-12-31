@@ -5,13 +5,21 @@ import os
 from typing import Any
 
 from thordata import ScraperTaskConfig, ThordataClient
-from thordata._example_utils import load_env, skip_if_missing, parse_json_env, normalize_task_parameters
+from thordata._example_utils import (
+    load_env,
+    normalize_task_parameters,
+    parse_json_env,
+    skip_if_missing,
+)
 
 
 def main() -> int:
     load_env()
 
-    if skip_if_missing(["THORDATA_SCRAPER_TOKEN"], tip="SERP/Universal requires THORDATA_SCRAPER_TOKEN."):
+    if skip_if_missing(
+        ["THORDATA_SCRAPER_TOKEN"],
+        tip="SERP/Universal requires THORDATA_SCRAPER_TOKEN.",
+    ):
         return 0
 
     client = ThordataClient(
@@ -33,16 +41,27 @@ def main() -> int:
     print("=" * 60)
     print("2) Universal live smoke")
     print("=" * 60)
-    html = client.universal_scrape("https://httpbin.org/html", js_render=False, output_format="html")
+    html = client.universal_scrape(
+        "https://httpbin.org/html", js_render=False, output_format="html"
+    )
     s = html if isinstance(html, str) else str(html)
     print("universal length:", len(s))
-    print("universal preview:", s[:200].replace("\n", " ") + ("..." if len(s) > 200 else ""))
+    print(
+        "universal preview:",
+        s[:200].replace("\n", " ") + ("..." if len(s) > 200 else ""),
+    )
 
     print("=" * 60)
     print("3) Tasks live smoke (optional)")
     print("=" * 60)
     if skip_if_missing(
-        ["THORDATA_PUBLIC_TOKEN", "THORDATA_PUBLIC_KEY", "THORDATA_TASK_SPIDER_ID", "THORDATA_TASK_SPIDER_NAME", "THORDATA_TASK_PARAMETERS_JSON"],
+        [
+            "THORDATA_PUBLIC_TOKEN",
+            "THORDATA_PUBLIC_KEY",
+            "THORDATA_TASK_SPIDER_ID",
+            "THORDATA_TASK_SPIDER_NAME",
+            "THORDATA_TASK_PARAMETERS_JSON",
+        ],
         tip="Tasks smoke requires public token/key + task template env from Dashboard -> Web Scraper Store -> API Builder.",
     ):
         return 0

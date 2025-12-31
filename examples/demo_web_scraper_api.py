@@ -19,6 +19,7 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
@@ -66,7 +67,9 @@ def demo_create_task(client: ThordataClient) -> Optional[str]:
         parameters_json = os.getenv("THORDATA_TASK_PARAMETERS_JSON") or "{}"
 
         if not spider_id or not spider_name:
-            print("Skipping task creation: set THORDATA_TASK_SPIDER_ID and THORDATA_TASK_SPIDER_NAME in .env")
+            print(
+                "Skipping task creation: set THORDATA_TASK_SPIDER_ID and THORDATA_TASK_SPIDER_NAME in .env"
+            )
             return None
 
         try:
@@ -77,7 +80,9 @@ def demo_create_task(client: ThordataClient) -> Optional[str]:
                 raise ValueError("parameters must be object or array of objects")
             parameters = raw
         except Exception:
-            print("THORDATA_TASK_PARAMETERS_JSON must be valid JSON (object or array of objects)")
+            print(
+                "THORDATA_TASK_PARAMETERS_JSON must be valid JSON (object or array of objects)"
+            )
             return None
 
         task_id = client.create_scraper_task(
