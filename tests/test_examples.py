@@ -5,7 +5,6 @@ These tests run example scripts against a local mock server to verify
 they execute without errors. They don't require real API credentials.
 """
 
-import base64
 import json
 import os
 import subprocess

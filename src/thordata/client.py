@@ -27,7 +27,7 @@ import logging
 import os
 import ssl
 from datetime import date
-from typing import Any, Optional, Union
+from typing import Any
 from urllib.parse import urlencode
 
 import requests
@@ -61,7 +61,6 @@ from .models import (
     UniversalScrapeRequest,
     UsageStatistics,
     VideoTaskConfig,
-    WhitelistProxyConfig,
 )
 from .retry import RetryConfig, with_retry
 

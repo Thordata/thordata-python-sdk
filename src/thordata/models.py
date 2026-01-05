@@ -26,13 +26,10 @@ from __future__ import annotations
 
 import json
 import re
-import ssl
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional, Union
-
-import urllib3
+from typing import Any
 
 # =============================================================================
 # Proxy Product Types

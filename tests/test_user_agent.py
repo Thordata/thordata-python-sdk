@@ -1,5 +1,3 @@
-import os
-
 import pytest
 from pytest_httpserver import HTTPServer
 from werkzeug.wrappers import Request, Response

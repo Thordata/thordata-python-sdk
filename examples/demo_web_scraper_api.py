@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any, Optional
+from typing import Any
 
 from thordata import ScraperTaskConfig, ThordataClient, ThordataError
 from thordata._example_utils import (

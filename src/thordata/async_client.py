@@ -26,7 +26,7 @@ import asyncio
 import logging
 import os
 from datetime import date
-from typing import Any, Optional, Union
+from typing import Any
 
 import aiohttp
 
@@ -58,7 +58,6 @@ from .models import (
     UniversalScrapeRequest,
     UsageStatistics,
     VideoTaskConfig,
-    WhitelistProxyConfig,
 )
 from .retry import RetryConfig
 

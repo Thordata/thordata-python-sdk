@@ -17,11 +17,9 @@ Notes:
 
 from __future__ import annotations
 
-import os
 import runpy
 import sys
 from pathlib import Path
-from typing import Callable
 
 
 def _configure_stdio() -> None:

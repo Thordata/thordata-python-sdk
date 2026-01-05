@@ -97,7 +97,6 @@ select = [
 ignore = [
     "E501",  # line too long (handled by black)
     "E731",  # do not assign a lambda expression
-    "F401",  # imported but unused (we have some intentional re-exports)
 ]
 
 [tool.ruff.lint.isort]

@@ -3,7 +3,7 @@ Tests for AsyncThordataClient error handling.
 """
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

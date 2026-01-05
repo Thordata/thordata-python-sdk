@@ -227,7 +227,6 @@ if __name__ == "__main__":
 
     # Check if playwright is available
     try:
-        import playwright
 
         HAS_PLAYWRIGHT = True
     except ImportError:
