@@ -30,7 +30,7 @@ import ssl
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 import urllib3
 
@@ -111,21 +111,21 @@ class ProxyConfig:
 
     username: str
     password: str
-    product: Union[ProxyProduct, str] = ProxyProduct.RESIDENTIAL
-    host: Optional[str] = None
-    port: Optional[int] = None
+    product: ProxyProduct | str = ProxyProduct.RESIDENTIAL
+    host: str | None = None
+    port: int | None = None
     protocol: str = "http"
 
     # Geo-targeting
-    continent: Optional[str] = None
-    country: Optional[str] = None
-    state: Optional[str] = None
-    city: Optional[str] = None
-    asn: Optional[str] = None
+    continent: str | None = None
+    country: str | None = None
+    state: str | None = None
+    city: str | None = None
+    asn: str | None = None
 
     # Session control
-    session_id: Optional[str] = None
-    session_duration: Optional[int] = None  # minutes, 1-90
+    session_id: str | None = None
+    session_duration: int | None = None  # minutes, 1-90
 
     # Valid continent codes
     VALID_CONTINENTS = {"af", "an", "as", "eu", "na", "oc", "sa"}
@@ -245,7 +245,7 @@ class ProxyConfig:
         """Basic auth string 'username:password' for Proxy-Authorization."""
         return f"{self.build_username()}:{self.password}"
 
-    def to_proxies_dict(self) -> Dict[str, str]:
+    def to_proxies_dict(self) -> dict[str, str]:
         """
         Build a proxies dict suitable for the requests library.
 
@@ -300,7 +300,7 @@ class WhitelistProxyConfig:
     def build_proxy_url(self) -> str:
         return f"{self.protocol}://{self.host}:{self.port}"
 
-    def to_proxies_dict(self) -> Dict[str, str]:
+    def to_proxies_dict(self) -> dict[str, str]:
         url = self.build_proxy_url()
         return {"http": url, "https": url}
 
@@ -358,7 +358,7 @@ class StaticISPProxy:
             f"{self.protocol}://{self.username}:{self.password}@{self.host}:{self.port}"
         )
 
-    def to_proxies_dict(self) -> Dict[str, str]:
+    def to_proxies_dict(self) -> dict[str, str]:
         """
         Build a proxies dict suitable for the requests library.
 
@@ -387,7 +387,7 @@ class StaticISPProxy:
             ) from e
 
     @classmethod
-    def from_env(cls) -> "StaticISPProxy":
+    def from_env(cls) -> StaticISPProxy:
         """
         Create StaticISPProxy from environment variables.
 
@@ -513,39 +513,39 @@ class SerpRequest:
     start: int = 0
 
     # Localization
-    country: Optional[str] = None  # 'gl' for Google
-    language: Optional[str] = None  # 'hl' for Google
-    google_domain: Optional[str] = None
-    countries_filter: Optional[str] = None  # 'cr' parameter
-    languages_filter: Optional[str] = None  # 'lr' parameter
+    country: str | None = None  # 'gl' for Google
+    language: str | None = None  # 'hl' for Google
+    google_domain: str | None = None
+    countries_filter: str | None = None  # 'cr' parameter
+    languages_filter: str | None = None  # 'lr' parameter
 
     # Geo-targeting
-    location: Optional[str] = None
-    uule: Optional[str] = None  # Encoded location
+    location: str | None = None
+    uule: str | None = None  # Encoded location
 
     # Search type
-    search_type: Optional[str] = None  # tbm parameter (isch, shop, nws, vid, ...)
+    search_type: str | None = None  # tbm parameter (isch, shop, nws, vid, ...)
 
     # Filters
-    safe_search: Optional[bool] = None
-    time_filter: Optional[str] = None  # tbs parameter (time part)
+    safe_search: bool | None = None
+    time_filter: str | None = None  # tbs parameter (time part)
     no_autocorrect: bool = False  # nfpr parameter
-    filter_duplicates: Optional[bool] = None  # filter parameter
+    filter_duplicates: bool | None = None  # filter parameter
 
     # Device & Rendering
-    device: Optional[str] = None  # 'desktop', 'mobile', 'tablet'
-    render_js: Optional[bool] = None  # render_js parameter
-    no_cache: Optional[bool] = None  # no_cache parameter
+    device: str | None = None  # 'desktop', 'mobile', 'tablet'
+    render_js: bool | None = None  # render_js parameter
+    no_cache: bool | None = None  # no_cache parameter
 
     # Output format
     output_format: str = "json"  # 'json' or 'html'
 
     # Advanced Google parameters
-    ludocid: Optional[str] = None  # Google Place ID
-    kgmid: Optional[str] = None  # Knowledge Graph ID
+    ludocid: str | None = None  # Google Place ID
+    kgmid: str | None = None  # Knowledge Graph ID
 
     # Pass-through
-    extra_params: Dict[str, Any] = field(default_factory=dict)
+    extra_params: dict[str, Any] = field(default_factory=dict)
 
     # Search type mappings for tbm parameter
     SEARCH_TYPE_MAP = {
@@ -578,7 +578,7 @@ class SerpRequest:
         "baidu": "baidu.com",
     }
 
-    def to_payload(self) -> Dict[str, Any]:
+    def to_payload(self) -> dict[str, Any]:
         """
         Convert to API request payload.
 
@@ -587,7 +587,7 @@ class SerpRequest:
         """
         engine = self.engine.lower()
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "engine": engine,
             "num": str(self.num),
         }
@@ -722,14 +722,14 @@ class UniversalScrapeRequest:
     url: str
     js_render: bool = False
     output_format: str = "html"  # 'html' or 'png'
-    country: Optional[str] = None
-    block_resources: Optional[str] = None  # e.g., 'script', 'image', 'script,image'
-    clean_content: Optional[str] = None  # e.g., 'js', 'css', 'js,css'
-    wait: Optional[int] = None  # Milliseconds, max 100000
-    wait_for: Optional[str] = None  # CSS selector
-    headers: Optional[List[Dict[str, str]]] = None  # [{"name": "...", "value": "..."}]
-    cookies: Optional[List[Dict[str, str]]] = None  # [{"name": "...", "value": "..."}]
-    extra_params: Dict[str, Any] = field(default_factory=dict)  # 这个必须用 field()
+    country: str | None = None
+    block_resources: str | None = None  # e.g., 'script', 'image', 'script,image'
+    clean_content: str | None = None  # e.g., 'js', 'css', 'js,css'
+    wait: int | None = None  # Milliseconds, max 100000
+    wait_for: str | None = None  # CSS selector
+    headers: list[dict[str, str]] | None = None  # [{"name": "...", "value": "..."}]
+    cookies: list[dict[str, str]] | None = None  # [{"name": "...", "value": "..."}]
+    extra_params: dict[str, Any] = field(default_factory=dict)  # 这个必须用 field()
 
     def __post_init__(self) -> None:
         """Validate configuration."""
@@ -745,14 +745,14 @@ class UniversalScrapeRequest:
                 f"wait must be between 0 and 100000 milliseconds, got {self.wait}"
             )
 
-    def to_payload(self) -> Dict[str, Any]:
+    def to_payload(self) -> dict[str, Any]:
         """
         Convert to API request payload.
 
         Returns:
             Dictionary ready to be sent to the Universal API.
         """
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "url": self.url,
             "js_render": "True" if self.js_render else "False",
             "type": self.output_format.lower(),
@@ -820,18 +820,18 @@ class ScraperTaskConfig:
     file_name: str
     spider_id: str
     spider_name: str
-    parameters: Dict[str, Any]
-    universal_params: Optional[Dict[str, Any]] = None
+    parameters: dict[str, Any]
+    universal_params: dict[str, Any] | None = None
     include_errors: bool = True
 
-    def to_payload(self) -> Dict[str, Any]:
+    def to_payload(self) -> dict[str, Any]:
         """
         Convert to API request payload.
 
         Returns:
             Dictionary ready to be sent to the Web Scraper API.
         """
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "file_name": self.file_name,
             "spider_id": self.spider_id,
             "spider_name": self.spider_name,
@@ -877,21 +877,21 @@ class CommonSettings:
     """
 
     # Video settings
-    resolution: Optional[str] = None
+    resolution: str | None = None
 
     # Audio settings
-    audio_format: Optional[str] = None
-    bitrate: Optional[str] = None
+    audio_format: str | None = None
+    bitrate: str | None = None
 
     # Subtitle settings (used by both video and audio)
-    is_subtitles: Optional[str] = None
-    subtitles_language: Optional[str] = None
+    is_subtitles: str | None = None
+    subtitles_language: str | None = None
 
     # Valid values for validation
     VALID_RESOLUTIONS = {"360p", "480p", "720p", "1080p", "1440p", "2160p"}
     VALID_AUDIO_FORMATS = {"opus", "mp3"}
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary, excluding None values."""
         result = {}
         if self.resolution is not None:
@@ -943,18 +943,18 @@ class VideoTaskConfig:
     file_name: str
     spider_id: str
     spider_name: str
-    parameters: Dict[str, Any]
+    parameters: dict[str, Any]
     common_settings: CommonSettings
     include_errors: bool = True
 
-    def to_payload(self) -> Dict[str, Any]:
+    def to_payload(self) -> dict[str, Any]:
         """
         Convert to API request payload.
 
         Returns:
             Dictionary ready to be sent to the video_builder API.
         """
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "file_name": self.file_name,
             "spider_id": self.spider_id,
             "spider_name": self.spider_name,
@@ -984,8 +984,8 @@ class TaskStatusResponse:
 
     task_id: str
     status: str
-    progress: Optional[int] = None
-    message: Optional[str] = None
+    progress: int | None = None
+    message: str | None = None
 
     def is_complete(self) -> bool:
         """Check if the task has completed (success or failure)."""
@@ -1027,10 +1027,10 @@ class UsageStatistics:
     traffic_balance: float
     query_days: int
     range_usage_traffic: float
-    data: List[Dict[str, Any]]
+    data: list[dict[str, Any]]
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "UsageStatistics":
+    def from_dict(cls, data: dict[str, Any]) -> UsageStatistics:
         """Create from API response dict."""
         return cls(
             total_usage_traffic=float(data.get("total_usage_traffic", 0)),
@@ -1073,7 +1073,7 @@ class ProxyUser:
     usage_traffic: float
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ProxyUser":
+    def from_dict(cls, data: dict[str, Any]) -> ProxyUser:
         """Create from API response dict."""
         return cls(
             username=data.get("username", ""),
@@ -1109,10 +1109,10 @@ class ProxyUserList:
     limit: float
     remaining_limit: float
     user_count: int
-    users: List[ProxyUser]
+    users: list[ProxyUser]
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ProxyUserList":
+    def from_dict(cls, data: dict[str, Any]) -> ProxyUserList:
         """Create from API response dict."""
         user_list = data.get("list", [])
         users = [ProxyUser.from_dict(u) for u in user_list]
@@ -1143,11 +1143,11 @@ class ProxyServer:
     port: int
     username: str
     password: str
-    expiration_time: Optional[Union[int, str]] = None
-    region: Optional[str] = None
+    expiration_time: int | str | None = None
+    region: str | None = None
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ProxyServer":
+    def from_dict(cls, data: dict[str, Any]) -> ProxyServer:
         """Create from API response dict."""
         return cls(
             ip=data.get("ip", ""),

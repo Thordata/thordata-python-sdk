@@ -2,7 +2,7 @@
 Tests for ThordataClient error handling.
 """
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -20,15 +20,15 @@ class DummyResponse:
     Minimal fake Response object for testing.
     """
 
-    def __init__(self, json_data: Dict[str, Any], status_code: int = 200) -> None:
+    def __init__(self, json_data: dict[str, Any], status_code: int = 200) -> None:
         self._json_data = json_data
         self.status_code = status_code
 
     def raise_for_status(self) -> None:
-        if 400 <= self.status_code:
+        if self.status_code >= 400:
             raise requests.HTTPError(response=self)
 
-    def json(self) -> Dict[str, Any]:
+    def json(self) -> dict[str, Any]:
         return self._json_data
 
     @property
@@ -60,9 +60,11 @@ def test_universal_scrape_rate_limit_error() -> None:
 
     mock_response = DummyResponse({"code": 402, "msg": "Insufficient balance"})
 
-    with patch.object(client, "_api_request_with_retry", return_value=mock_response):
-        with pytest.raises(ThordataRateLimitError) as exc_info:
-            client.universal_scrape("https://example.com")
+    with (
+        patch.object(client, "_api_request_with_retry", return_value=mock_response),
+        pytest.raises(ThordataRateLimitError) as exc_info,
+    ):
+        client.universal_scrape("https://example.com")
 
     err = exc_info.value
     assert err.code == 402
@@ -79,14 +81,16 @@ def test_create_scraper_task_auth_error() -> None:
 
     mock_response = DummyResponse({"code": 401, "msg": "Unauthorized"})
 
-    with patch.object(client, "_api_request_with_retry", return_value=mock_response):
-        with pytest.raises(ThordataAuthError) as exc_info:
-            client.create_scraper_task(
-                file_name="test.json",
-                spider_id="dummy-spider",
-                spider_name="example.com",
-                parameters={"foo": "bar"},
-            )
+    with (
+        patch.object(client, "_api_request_with_retry", return_value=mock_response),
+        pytest.raises(ThordataAuthError) as exc_info,
+    ):
+        client.create_scraper_task(
+            file_name="test.json",
+            spider_id="dummy-spider",
+            spider_name="example.com",
+            parameters={"foo": "bar"},
+        )
 
     err = exc_info.value
     assert err.code == 401

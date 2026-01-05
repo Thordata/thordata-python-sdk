@@ -27,7 +27,7 @@ import logging
 import os
 import ssl
 from datetime import date
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 from urllib.parse import urlencode
 
 import requests
@@ -78,18 +78,18 @@ class ThordataClient:
     def __init__(
         self,
         scraper_token: str,
-        public_token: Optional[str] = None,
-        public_key: Optional[str] = None,
+        public_token: str | None = None,
+        public_key: str | None = None,
         proxy_host: str = "pr.thordata.net",
         proxy_port: int = 9999,
         timeout: int = 30,
         api_timeout: int = 60,
-        retry_config: Optional[RetryConfig] = None,
+        retry_config: RetryConfig | None = None,
         auth_mode: str = "bearer",
-        scraperapi_base_url: Optional[str] = None,
-        universalapi_base_url: Optional[str] = None,
-        web_scraper_api_base_url: Optional[str] = None,
-        locations_base_url: Optional[str] = None,
+        scraperapi_base_url: str | None = None,
+        universalapi_base_url: str | None = None,
+        web_scraper_api_base_url: str | None = None,
+        locations_base_url: str | None = None,
     ) -> None:
         """Initialize the Thordata Client."""
         if not scraper_token:
@@ -124,7 +124,7 @@ class ThordataClient:
 
         # Cache for ProxyManagers (Connection Pooling Fix)
         # Key: proxy_url (str), Value: urllib3.ProxyManager
-        self._proxy_managers: Dict[str, urllib3.ProxyManager] = {}
+        self._proxy_managers: dict[str, urllib3.ProxyManager] = {}
 
         self._api_session = requests.Session()
         self._api_session.trust_env = True
@@ -201,8 +201,8 @@ class ThordataClient:
         self,
         url: str,
         *,
-        proxy_config: Optional[ProxyConfig] = None,
-        timeout: Optional[int] = None,
+        proxy_config: ProxyConfig | None = None,
+        timeout: int | None = None,
         **kwargs: Any,
     ) -> requests.Response:
         logger.debug(f"Proxy GET request: {url}")
@@ -212,8 +212,8 @@ class ThordataClient:
         self,
         url: str,
         *,
-        proxy_config: Optional[ProxyConfig] = None,
-        timeout: Optional[int] = None,
+        proxy_config: ProxyConfig | None = None,
+        timeout: int | None = None,
         **kwargs: Any,
     ) -> requests.Response:
         logger.debug(f"Proxy POST request: {url}")
@@ -223,8 +223,8 @@ class ThordataClient:
         self,
         method: str,
         url: str,
-        proxy_config: Optional[ProxyConfig],
-        timeout: Optional[int],
+        proxy_config: ProxyConfig | None,
+        timeout: int | None,
         **kwargs: Any,
     ) -> requests.Response:
         timeout = timeout or self._default_timeout
@@ -269,12 +269,12 @@ class ThordataClient:
         username: str,
         password: str,
         *,
-        country: Optional[str] = None,
-        state: Optional[str] = None,
-        city: Optional[str] = None,
-        session_id: Optional[str] = None,
-        session_duration: Optional[int] = None,
-        product: Union[ProxyProduct, str] = ProxyProduct.RESIDENTIAL,
+        country: str | None = None,
+        state: str | None = None,
+        city: str | None = None,
+        session_id: str | None = None,
+        session_duration: int | None = None,
+        product: ProxyProduct | str = ProxyProduct.RESIDENTIAL,
     ) -> str:
         config = ProxyConfig(
             username=username,
@@ -298,9 +298,9 @@ class ThordataClient:
         method: str,
         url: str,
         *,
-        data: Optional[Dict[str, Any]] = None,
-        headers: Optional[Dict[str, str]] = None,
-        params: Optional[Dict[str, Any]] = None,
+        data: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        params: dict[str, Any] | None = None,
     ) -> requests.Response:
         @with_retry(self._retry_config)
         def _do_request() -> requests.Response:
@@ -347,8 +347,8 @@ class ThordataClient:
         *,
         proxy_config: ProxyConfig,
         timeout: int,
-        headers: Optional[Dict[str, str]] = None,
-        params: Optional[Dict[str, Any]] = None,
+        headers: dict[str, str] | None = None,
+        params: dict[str, Any] | None = None,
         data: Any = None,
     ) -> requests.Response:
         # 1. Prepare URL and Body
@@ -406,17 +406,17 @@ class ThordataClient:
         self,
         query: str,
         *,
-        engine: Union[Engine, str] = Engine.GOOGLE,
+        engine: Engine | str = Engine.GOOGLE,
         num: int = 10,
-        country: Optional[str] = None,
-        language: Optional[str] = None,
-        search_type: Optional[str] = None,
-        device: Optional[str] = None,
-        render_js: Optional[bool] = None,
-        no_cache: Optional[bool] = None,
+        country: str | None = None,
+        language: str | None = None,
+        search_type: str | None = None,
+        device: str | None = None,
+        render_js: bool | None = None,
+        no_cache: bool | None = None,
         output_format: str = "json",
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         engine_str = engine.value if isinstance(engine, Engine) else engine.lower()
 
         request = SerpRequest(
@@ -435,7 +435,7 @@ class ThordataClient:
 
         return self.serp_search_advanced(request)
 
-    def serp_search_advanced(self, request: SerpRequest) -> Dict[str, Any]:
+    def serp_search_advanced(self, request: SerpRequest) -> dict[str, Any]:
         payload = request.to_payload()
         headers = build_auth_headers(self.scraper_token, mode=self._auth_mode)
 
@@ -475,12 +475,12 @@ class ThordataClient:
         *,
         js_render: bool = False,
         output_format: str = "html",
-        country: Optional[str] = None,
-        block_resources: Optional[str] = None,
-        wait: Optional[int] = None,
-        wait_for: Optional[str] = None,
+        country: str | None = None,
+        block_resources: str | None = None,
+        wait: int | None = None,
+        wait_for: str | None = None,
         **kwargs: Any,
-    ) -> Union[str, bytes]:
+    ) -> str | bytes:
         request = UniversalScrapeRequest(
             url=url,
             js_render=js_render,
@@ -493,9 +493,7 @@ class ThordataClient:
         )
         return self.universal_scrape_advanced(request)
 
-    def universal_scrape_advanced(
-        self, request: UniversalScrapeRequest
-    ) -> Union[str, bytes]:
+    def universal_scrape_advanced(self, request: UniversalScrapeRequest) -> str | bytes:
         payload = request.to_payload()
         headers = build_auth_headers(self.scraper_token, mode=self._auth_mode)
 
@@ -522,7 +520,7 @@ class ThordataClient:
 
     def _process_universal_response(
         self, response: requests.Response, output_format: str
-    ) -> Union[str, bytes]:
+    ) -> str | bytes:
         try:
             resp_json = response.json()
         except ValueError:
@@ -549,8 +547,8 @@ class ThordataClient:
         file_name: str,
         spider_id: str,
         spider_name: str,
-        parameters: Dict[str, Any],
-        universal_params: Optional[Dict[str, Any]] = None,
+        parameters: dict[str, Any],
+        universal_params: dict[str, Any] | None = None,
     ) -> str:
         config = ScraperTaskConfig(
             file_name=file_name,
@@ -589,8 +587,8 @@ class ThordataClient:
         file_name: str,
         spider_id: str,
         spider_name: str,
-        parameters: Dict[str, Any],
-        common_settings: "CommonSettings",
+        parameters: dict[str, Any],
+        common_settings: CommonSettings,
     ) -> str:
         config = VideoTaskConfig(
             file_name=file_name,
@@ -675,7 +673,7 @@ class ThordataClient:
                 f"Get result failed: {e}", original_error=e
             ) from e
 
-    def list_tasks(self, page: int = 1, size: int = 20) -> Dict[str, Any]:
+    def list_tasks(self, page: int = 1, size: int = 20) -> dict[str, Any]:
         self._require_public_credentials()
         headers = build_public_api_headers(
             self.public_token or "", self.public_key or ""
@@ -721,8 +719,8 @@ class ThordataClient:
     # =========================================================================
     def get_usage_statistics(
         self,
-        from_date: Union[str, date],
-        to_date: Union[str, date],
+        from_date: str | date,
+        to_date: str | date,
     ) -> UsageStatistics:
         self._require_public_credentials()
         if isinstance(from_date, date):
@@ -746,7 +744,7 @@ class ThordataClient:
         return UsageStatistics.from_dict(data.get("data", data))
 
     def list_proxy_users(
-        self, proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL
+        self, proxy_type: ProxyType | int = ProxyType.RESIDENTIAL
     ) -> ProxyUserList:
         self._require_public_credentials()
         pt = int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
@@ -768,10 +766,10 @@ class ThordataClient:
         self,
         username: str,
         password: str,
-        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL,
+        proxy_type: ProxyType | int = ProxyType.RESIDENTIAL,
         traffic_limit: int = 0,
         status: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         self._require_public_credentials()
         pt = int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
         headers = build_public_api_headers(
@@ -799,9 +797,9 @@ class ThordataClient:
     def add_whitelist_ip(
         self,
         ip: str,
-        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL,
+        proxy_type: ProxyType | int = ProxyType.RESIDENTIAL,
         status: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         self._require_public_credentials()
         pt = int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
         headers = build_public_api_headers(
@@ -823,7 +821,7 @@ class ThordataClient:
             )
         return data.get("data", {})
 
-    def list_proxy_servers(self, proxy_type: int) -> List[ProxyServer]:
+    def list_proxy_servers(self, proxy_type: int) -> list[ProxyServer]:
         self._require_public_credentials()
         params = {
             "token": self.public_token,
@@ -849,8 +847,8 @@ class ThordataClient:
         return [ProxyServer.from_dict(s) for s in server_list]
 
     def get_proxy_expiration(
-        self, ips: Union[str, List[str]], proxy_type: int
-    ) -> Dict[str, Any]:
+        self, ips: str | list[str], proxy_type: int
+    ) -> dict[str, Any]:
         self._require_public_credentials()
         if isinstance(ips, list):
             ips = ",".join(ips)
@@ -870,25 +868,25 @@ class ThordataClient:
         return data.get("data", data)
 
     def list_countries(
-        self, proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL
-    ) -> List[Dict[str, Any]]:
+        self, proxy_type: ProxyType | int = ProxyType.RESIDENTIAL
+    ) -> list[dict[str, Any]]:
         pt = int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
         return self._get_locations("countries", proxy_type=pt)
 
     def list_states(
         self,
         country_code: str,
-        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL,
-    ) -> List[Dict[str, Any]]:
+        proxy_type: ProxyType | int = ProxyType.RESIDENTIAL,
+    ) -> list[dict[str, Any]]:
         pt = int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
         return self._get_locations("states", proxy_type=pt, country_code=country_code)
 
     def list_cities(
         self,
         country_code: str,
-        state_code: Optional[str] = None,
-        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL,
-    ) -> List[Dict[str, Any]]:
+        state_code: str | None = None,
+        proxy_type: ProxyType | int = ProxyType.RESIDENTIAL,
+    ) -> list[dict[str, Any]]:
         pt = int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
         kwargs = {"proxy_type": pt, "country_code": country_code}
         if state_code:
@@ -898,12 +896,12 @@ class ThordataClient:
     def list_asn(
         self,
         country_code: str,
-        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL,
-    ) -> List[Dict[str, Any]]:
+        proxy_type: ProxyType | int = ProxyType.RESIDENTIAL,
+    ) -> list[dict[str, Any]]:
         pt = int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
         return self._get_locations("asn", proxy_type=pt, country_code=country_code)
 
-    def _get_locations(self, endpoint: str, **kwargs: Any) -> List[Dict[str, Any]]:
+    def _get_locations(self, endpoint: str, **kwargs: Any) -> list[dict[str, Any]]:
         self._require_public_credentials()
         params = {"token": self.public_token, "key": self.public_key}
         for k, v in kwargs.items():
@@ -928,7 +926,7 @@ class ThordataClient:
 
     def _get_proxy_endpoint_overrides(
         self, product: ProxyProduct
-    ) -> tuple[Optional[str], Optional[int], str]:
+    ) -> tuple[str | None, int | None, str]:
         prefix = product.value.upper()
         host = os.getenv(f"THORDATA_{prefix}_PROXY_HOST") or os.getenv(
             "THORDATA_PROXY_HOST"
@@ -944,7 +942,7 @@ class ThordataClient:
         port = int(port_raw) if port_raw and port_raw.isdigit() else None
         return host or None, port, protocol
 
-    def _get_default_proxy_config_from_env(self) -> Optional[ProxyConfig]:
+    def _get_default_proxy_config_from_env(self) -> ProxyConfig | None:
         for prod in [
             ProxyProduct.RESIDENTIAL,
             ProxyProduct.DATACENTER,

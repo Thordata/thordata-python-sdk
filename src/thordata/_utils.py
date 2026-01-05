@@ -10,7 +10,7 @@ import base64
 import json
 import logging
 import platform
-from typing import Any, Dict
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ def decode_base64_image(png_str: str) -> bytes:
         raise ValueError(f"Failed to decode base64 image: {e}") from e
 
 
-def build_auth_headers(token: str, mode: str = "bearer") -> Dict[str, str]:
+def build_auth_headers(token: str, mode: str = "bearer") -> dict[str, str]:
     """
     Build authorization headers for API requests.
 
@@ -105,7 +105,7 @@ def build_builder_headers(
     scraper_token: str,
     public_token: str,
     public_key: str,
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """
     Build headers for Web Scraper builder API.
 
@@ -130,7 +130,7 @@ def build_builder_headers(
     }
 
 
-def build_public_api_headers(public_token: str, public_key: str) -> Dict[str, str]:
+def build_public_api_headers(public_token: str, public_key: str) -> dict[str, str]:
     """
     Build headers for public API requests (task status, locations, etc.)
 

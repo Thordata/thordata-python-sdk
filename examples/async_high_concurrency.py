@@ -27,7 +27,7 @@ import logging
 import os
 import sys
 import time
-from typing import Any, Dict
+from typing import Any
 
 try:
     from dotenv import load_dotenv
@@ -65,7 +65,7 @@ def _get_concurrency() -> int:
 
 async def _serp_once(
     client: AsyncThordataClient, query: str, request_id: int
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     try:
         data = await client.serp_search(query=query, num=3, engine="google")
         organic = data.get("organic", [])

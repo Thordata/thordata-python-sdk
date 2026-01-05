@@ -21,7 +21,7 @@ import os
 import runpy
 import sys
 from pathlib import Path
-from typing import Callable, Dict
+from typing import Callable
 
 
 def _configure_stdio() -> None:
@@ -53,7 +53,7 @@ def _examples_dir() -> Path:
     return _repo_root() / "examples"
 
 
-def _demo_map() -> Dict[str, Path]:
+def _demo_map() -> dict[str, Path]:
     ex = _examples_dir()
     return {
         "serp": ex / "demo_serp_api.py",

@@ -155,7 +155,7 @@ def serp_search(
     query: str,
     *,
     engine: str = "google",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Execute a SERP search.
     

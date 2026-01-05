@@ -91,9 +91,9 @@ In the SDK's UniversalScrapeRequest / universal_scrape, the corresponding relati
 | clean_content | clean_content | str | No | None | Content types to remove from returned results, examples: "js", "css", "js,css". |
 | wait | wait | int | No | None | Page loading wait time (milliseconds), maximum 100000. |
 | wait_for | wait_for | str | No | None | CSS selector, wait for this element to appear in DOM before returning (higher priority than wait). |
-| headers | headers | List[Dict[str, str]] | No | None | Custom request headers list, automatically encoded as JSON string. |
-| cookies | cookies | List[Dict[str, str]] | No | None | Custom Cookie list, automatically encoded as JSON string. |
-| (Others) | extra_params / **kwargs | Dict[str, Any] | No | {} | Future new parameters can be passed directly via kwargs. |
+| headers | headers | list[dict[str, str]] | No | None | Custom request headers list, automatically encoded as JSON string. |
+| cookies | cookies | list[dict[str, str]] | No | None | Custom Cookie list, automatically encoded as JSON string. |
+| (Others) | extra_params / **kwargs | dict[str, Any] | No | {} | Future new parameters can be passed directly via kwargs. |
 
 ## 2. UniversalScrapeRequest Model (Internal Structure)
 
@@ -113,11 +113,11 @@ class UniversalScrapeRequest:
     clean_content: Optional[str] = None
     wait: Optional[int] = None
     wait_for: Optional[str] = None
-    headers: Optional[List[Dict[str, str]]] = None
-    cookies: Optional[List[Dict[str, str]]] = None
-    extra_params: Dict[str, Any] = field(default_factory=dict)
+    headers: Optional[list[dict[str, str]]] = None
+    cookies: Optional[list[dict[str, str]]] = None
+    extra_params: dict[str, Any] = field(default_factory=dict)
 
-    def to_payload(self) -> Dict[str, Any]:
+    def to_payload(self) -> dict[str, Any]:
         # Convert to API form parameters
         ...
 ```

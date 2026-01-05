@@ -15,7 +15,7 @@ Exception Hierarchy:
 
 from __future__ import annotations
 
-from typing import Any, Optional, Set
+from typing import Any, Optional
 
 # =============================================================================
 # Base Exception
@@ -63,7 +63,7 @@ class ThordataNetworkError(ThordataError):
         self,
         message: str,
         *,
-        original_error: Optional[Exception] = None,
+        original_error: Exception | None = None,
     ) -> None:
         super().__init__(message)
         self.original_error = original_error
@@ -98,16 +98,16 @@ class ThordataAPIError(ThordataError):
     """
 
     # HTTP status codes that indicate this error type
-    HTTP_STATUS_CODES: Set[int] = set()
+    HTTP_STATUS_CODES: set[int] = set()
 
     def __init__(
         self,
         message: str,
         *,
-        status_code: Optional[int] = None,
-        code: Optional[int] = None,
+        status_code: int | None = None,
+        code: int | None = None,
         payload: Any = None,
-        request_id: Optional[str] = None,
+        request_id: str | None = None,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
@@ -168,7 +168,7 @@ class ThordataRateLimitError(ThordataAPIError):
         self,
         message: str,
         *,
-        retry_after: Optional[int] = None,
+        retry_after: int | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(message, **kwargs)
@@ -223,7 +223,7 @@ class ThordataNotCollectedError(ThordataAPIError):
     """
 
     API_CODES = {300}
-    HTTP_STATUS_CODES: Set[int] = set()
+    HTTP_STATUS_CODES: set[int] = set()
 
     @property
     def is_retryable(self) -> bool:
@@ -238,10 +238,10 @@ class ThordataNotCollectedError(ThordataAPIError):
 def raise_for_code(
     message: str,
     *,
-    status_code: Optional[int] = None,
-    code: Optional[int] = None,
+    status_code: int | None = None,
+    code: int | None = None,
     payload: Any = None,
-    request_id: Optional[str] = None,
+    request_id: str | None = None,
 ) -> None:
     """
     Factory function to raise the appropriate exception based on status/code.
@@ -266,7 +266,7 @@ def raise_for_code(
     # Determine the effective error code.
     # Prefer payload `code` when present and not success (200),
     # otherwise fall back to HTTP status when it indicates an error.
-    effective_code: Optional[int] = None
+    effective_code: int | None = None
 
     if code is not None and code != 200:
         effective_code = code

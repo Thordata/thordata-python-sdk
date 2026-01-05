@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Optional
 
 try:
     from dotenv import load_dotenv
@@ -23,7 +24,7 @@ def env(name: str) -> str:
     return (os.getenv(name) or "").strip()
 
 
-def skip_if_missing(required: Iterable[str], *, tip: Optional[str] = None) -> bool:
+def skip_if_missing(required: Iterable[str], *, tip: str | None = None) -> bool:
     missing = [k for k in required if not env(k)]
     if not missing:
         return False

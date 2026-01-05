@@ -2,7 +2,7 @@
 Tests for AsyncThordataClient error handling.
 """
 
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
@@ -19,7 +19,7 @@ class DummyAsyncResponse:
     Minimal async fake response object for aiohttp.
     """
 
-    def __init__(self, json_data: Dict[str, Any], status: int = 200) -> None:
+    def __init__(self, json_data: dict[str, Any], status: int = 200) -> None:
         self._json_data = json_data
         self.status = status
 
@@ -32,7 +32,7 @@ class DummyAsyncResponse:
     def raise_for_status(self) -> None:
         pass
 
-    async def json(self) -> Dict[str, Any]:
+    async def json(self) -> dict[str, Any]:
         return self._json_data
 
     async def read(self) -> bytes:

@@ -1,3 +1,4 @@
+# thordata-python-sdk/pyproject.toml
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -90,6 +91,8 @@ select = [
     "F",   # pyflakes
     "I",   # isort (import sorting)
     "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "SIM", # flake8-simplify
 ]
 ignore = [
     "E501",  # line too long (handled by black)

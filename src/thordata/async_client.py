@@ -26,7 +26,7 @@ import asyncio
 import logging
 import os
 from datetime import date
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 import aiohttp
 
@@ -98,18 +98,18 @@ class AsyncThordataClient:
     def __init__(
         self,
         scraper_token: str,
-        public_token: Optional[str] = None,
-        public_key: Optional[str] = None,
+        public_token: str | None = None,
+        public_key: str | None = None,
         proxy_host: str = "pr.thordata.net",
         proxy_port: int = 9999,
         timeout: int = 30,
         api_timeout: int = 60,
-        retry_config: Optional[RetryConfig] = None,
+        retry_config: RetryConfig | None = None,
         auth_mode: str = "bearer",
-        scraperapi_base_url: Optional[str] = None,
-        universalapi_base_url: Optional[str] = None,
-        web_scraper_api_base_url: Optional[str] = None,
-        locations_base_url: Optional[str] = None,
+        scraperapi_base_url: str | None = None,
+        universalapi_base_url: str | None = None,
+        web_scraper_api_base_url: str | None = None,
+        locations_base_url: str | None = None,
     ) -> None:
         """Initialize the Async Thordata Client."""
         if not scraper_token:
@@ -202,7 +202,7 @@ class AsyncThordataClient:
         self._proxy_expiration_url = f"{proxy_api_base}/proxy/expiration-time"
 
         # Session initialized lazily
-        self._session: Optional[aiohttp.ClientSession] = None
+        self._session: aiohttp.ClientSession | None = None
 
     async def __aenter__(self) -> AsyncThordataClient:
         """Async context manager entry."""
@@ -241,7 +241,7 @@ class AsyncThordataClient:
         self,
         url: str,
         *,
-        proxy_config: Optional[ProxyConfig] = None,
+        proxy_config: ProxyConfig | None = None,
         **kwargs: Any,
     ) -> aiohttp.ClientResponse:
         """
@@ -297,7 +297,7 @@ class AsyncThordataClient:
         self,
         url: str,
         *,
-        proxy_config: Optional[ProxyConfig] = None,
+        proxy_config: ProxyConfig | None = None,
         **kwargs: Any,
     ) -> aiohttp.ClientResponse:
         """
@@ -357,17 +357,17 @@ class AsyncThordataClient:
         self,
         query: str,
         *,
-        engine: Union[Engine, str] = Engine.GOOGLE,
+        engine: Engine | str = Engine.GOOGLE,
         num: int = 10,
-        country: Optional[str] = None,
-        language: Optional[str] = None,
-        search_type: Optional[str] = None,
-        device: Optional[str] = None,
-        render_js: Optional[bool] = None,
-        no_cache: Optional[bool] = None,
+        country: str | None = None,
+        language: str | None = None,
+        search_type: str | None = None,
+        device: str | None = None,
+        render_js: bool | None = None,
+        no_cache: bool | None = None,
         output_format: str = "json",
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Execute an async SERP search.
 
@@ -447,7 +447,7 @@ class AsyncThordataClient:
                 original_error=e,
             ) from e
 
-    async def serp_search_advanced(self, request: SerpRequest) -> Dict[str, Any]:
+    async def serp_search_advanced(self, request: SerpRequest) -> dict[str, Any]:
         """
         Execute an async SERP search using a SerpRequest object.
         """
@@ -505,12 +505,12 @@ class AsyncThordataClient:
         *,
         js_render: bool = False,
         output_format: str = "html",
-        country: Optional[str] = None,
-        block_resources: Optional[str] = None,
-        wait: Optional[int] = None,
-        wait_for: Optional[str] = None,
+        country: str | None = None,
+        block_resources: str | None = None,
+        wait: int | None = None,
+        wait_for: str | None = None,
         **kwargs: Any,
-    ) -> Union[str, bytes]:
+    ) -> str | bytes:
         """
         Async scrape using Universal API (Web Unlocker).
 
@@ -541,7 +541,7 @@ class AsyncThordataClient:
 
     async def universal_scrape_advanced(
         self, request: UniversalScrapeRequest
-    ) -> Union[str, bytes]:
+    ) -> str | bytes:
         """
         Async scrape using a UniversalScrapeRequest object.
         """
@@ -600,8 +600,8 @@ class AsyncThordataClient:
         file_name: str,
         spider_id: str,
         spider_name: str,
-        parameters: Dict[str, Any],
-        universal_params: Optional[Dict[str, Any]] = None,
+        parameters: dict[str, Any],
+        universal_params: dict[str, Any] | None = None,
     ) -> str:
         """
         Create an async Web Scraper task.
@@ -659,7 +659,7 @@ class AsyncThordataClient:
         file_name: str,
         spider_id: str,
         spider_name: str,
-        parameters: Dict[str, Any],
+        parameters: dict[str, Any],
         common_settings: CommonSettings,
     ) -> str:
         """
@@ -828,7 +828,7 @@ class AsyncThordataClient:
         self,
         page: int = 1,
         size: int = 20,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         List all Web Scraper tasks.
 
@@ -845,7 +845,7 @@ class AsyncThordataClient:
         headers = build_public_api_headers(
             self.public_token or "", self.public_key or ""
         )
-        payload: Dict[str, Any] = {}
+        payload: dict[str, Any] = {}
         if page:
             payload["page"] = str(page)
         if size:
@@ -921,8 +921,8 @@ class AsyncThordataClient:
 
     async def get_usage_statistics(
         self,
-        from_date: Union[str, date],
-        to_date: Union[str, date],
+        from_date: str | date,
+        to_date: str | date,
     ) -> UsageStatistics:
         """
         Get account usage statistics for a date range.
@@ -989,7 +989,7 @@ class AsyncThordataClient:
                 f"Usage statistics failed: {e}", original_error=e
             ) from e
 
-    async def get_residential_balance(self) -> Dict[str, Any]:
+    async def get_residential_balance(self) -> dict[str, Any]:
         """
         Get residential proxy balance.
 
@@ -1030,9 +1030,9 @@ class AsyncThordataClient:
 
     async def get_residential_usage(
         self,
-        start_time: Union[str, int],
-        end_time: Union[str, int],
-    ) -> Dict[str, Any]:
+        start_time: str | int,
+        end_time: str | int,
+    ) -> dict[str, Any]:
         """
         Get residential proxy usage records.
 
@@ -1071,7 +1071,7 @@ class AsyncThordataClient:
             ) from e
 
     async def list_proxy_users(
-        self, proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL
+        self, proxy_type: ProxyType | int = ProxyType.RESIDENTIAL
     ) -> ProxyUserList:
         """List all proxy users (sub-accounts)."""
 
@@ -1126,10 +1126,10 @@ class AsyncThordataClient:
         self,
         username: str,
         password: str,
-        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL,
+        proxy_type: ProxyType | int = ProxyType.RESIDENTIAL,
         traffic_limit: int = 0,
         status: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create a new proxy user (sub-account)."""
         self._require_public_credentials()
         session = self._get_session()
@@ -1181,9 +1181,9 @@ class AsyncThordataClient:
     async def add_whitelist_ip(
         self,
         ip: str,
-        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL,
+        proxy_type: ProxyType | int = ProxyType.RESIDENTIAL,
         status: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Add an IP to the whitelist for IP authentication.
         """
@@ -1237,7 +1237,7 @@ class AsyncThordataClient:
     async def list_proxy_servers(
         self,
         proxy_type: int,
-    ) -> List[ProxyServer]:
+    ) -> list[ProxyServer]:
         """
         List ISP or Datacenter proxy servers.
         """
@@ -1290,7 +1290,7 @@ class AsyncThordataClient:
                 f"List servers failed: {e}", original_error=e
             ) from e
 
-    async def get_isp_regions(self) -> List[Dict[str, Any]]:
+    async def get_isp_regions(self) -> list[dict[str, Any]]:
         """
         Get available ISP proxy regions.
 
@@ -1329,7 +1329,7 @@ class AsyncThordataClient:
                 f"Get ISP regions failed: {e}", original_error=e
             ) from e
 
-    async def list_isp_proxies(self) -> List[Dict[str, Any]]:
+    async def list_isp_proxies(self) -> list[dict[str, Any]]:
         """
         List ISP proxies.
 
@@ -1368,7 +1368,7 @@ class AsyncThordataClient:
                 f"List ISP proxies failed: {e}", original_error=e
             ) from e
 
-    async def get_wallet_balance(self) -> Dict[str, Any]:
+    async def get_wallet_balance(self) -> dict[str, Any]:
         """
         Get wallet balance for ISP proxies.
 
@@ -1409,9 +1409,9 @@ class AsyncThordataClient:
 
     async def get_proxy_expiration(
         self,
-        ips: Union[str, List[str]],
+        ips: str | list[str],
         proxy_type: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get expiration time for specific proxy IPs.
         """
@@ -1465,8 +1465,8 @@ class AsyncThordataClient:
     # =========================================================================
 
     async def list_countries(
-        self, proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL
-    ) -> List[Dict[str, Any]]:
+        self, proxy_type: ProxyType | int = ProxyType.RESIDENTIAL
+    ) -> list[dict[str, Any]]:
         """List supported countries."""
         return await self._get_locations(
             "countries",
@@ -1478,8 +1478,8 @@ class AsyncThordataClient:
     async def list_states(
         self,
         country_code: str,
-        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL,
-    ) -> List[Dict[str, Any]]:
+        proxy_type: ProxyType | int = ProxyType.RESIDENTIAL,
+    ) -> list[dict[str, Any]]:
         """List supported states for a country."""
         return await self._get_locations(
             "states",
@@ -1492,9 +1492,9 @@ class AsyncThordataClient:
     async def list_cities(
         self,
         country_code: str,
-        state_code: Optional[str] = None,
-        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL,
-    ) -> List[Dict[str, Any]]:
+        state_code: str | None = None,
+        proxy_type: ProxyType | int = ProxyType.RESIDENTIAL,
+    ) -> list[dict[str, Any]]:
         """List supported cities."""
         kwargs = {
             "proxy_type": (
@@ -1510,8 +1510,8 @@ class AsyncThordataClient:
     async def list_asn(
         self,
         country_code: str,
-        proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL,
-    ) -> List[Dict[str, Any]]:
+        proxy_type: ProxyType | int = ProxyType.RESIDENTIAL,
+    ) -> list[dict[str, Any]]:
         """List supported ASNs."""
         return await self._get_locations(
             "asn",
@@ -1523,7 +1523,7 @@ class AsyncThordataClient:
 
     async def _get_locations(
         self, endpoint: str, **kwargs: Any
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Internal async locations API call."""
         self._require_public_credentials()
 
@@ -1540,24 +1540,26 @@ class AsyncThordataClient:
         logger.debug(f"Async Locations API: {url}")
 
         # Create temporary session for this request (no proxy needed)
-        async with aiohttp.ClientSession(trust_env=True) as temp_session:
-            async with temp_session.get(url, params=params) as response:
-                response.raise_for_status()
-                data = await response.json()
+        async with (
+            aiohttp.ClientSession(trust_env=True) as temp_session,
+            temp_session.get(url, params=params) as response,
+        ):
+            response.raise_for_status()
+            data = await response.json()
 
-                if isinstance(data, dict):
-                    code = data.get("code")
-                    if code is not None and code != 200:
-                        msg = data.get("msg", "")
-                        raise RuntimeError(
-                            f"Locations API error ({endpoint}): code={code}, msg={msg}"
-                        )
-                    return data.get("data") or []
+            if isinstance(data, dict):
+                code = data.get("code")
+                if code is not None and code != 200:
+                    msg = data.get("msg", "")
+                    raise RuntimeError(
+                        f"Locations API error ({endpoint}): code={code}, msg={msg}"
+                    )
+                return data.get("data") or []
 
-                if isinstance(data, list):
-                    return data
+            if isinstance(data, list):
+                return data
 
-                return []
+            return []
 
     # =========================================================================
     # Helper Methods
@@ -1573,7 +1575,7 @@ class AsyncThordataClient:
 
     def _get_proxy_endpoint_overrides(
         self, product: ProxyProduct
-    ) -> tuple[Optional[str], Optional[int], str]:
+    ) -> tuple[str | None, int | None, str]:
         prefix = product.value.upper()
 
         host = os.getenv(f"THORDATA_{prefix}_PROXY_HOST") or os.getenv(
@@ -1588,7 +1590,7 @@ class AsyncThordataClient:
             or "http"
         )
 
-        port: Optional[int] = None
+        port: int | None = None
         if port_raw:
             try:
                 port = int(port_raw)
@@ -1597,7 +1599,7 @@ class AsyncThordataClient:
 
         return host or None, port, protocol
 
-    def _get_default_proxy_config_from_env(self) -> Optional[ProxyConfig]:
+    def _get_default_proxy_config_from_env(self) -> ProxyConfig | None:
         u = os.getenv("THORDATA_RESIDENTIAL_USERNAME")
         p = os.getenv("THORDATA_RESIDENTIAL_PASSWORD")
         if u and p:
@@ -1645,7 +1647,7 @@ class AsyncThordataClient:
 
         return None
 
-    def _build_gateway_headers(self) -> Dict[str, str]:
+    def _build_gateway_headers(self) -> dict[str, str]:
         """
         Headers for gateway-style endpoints.
 

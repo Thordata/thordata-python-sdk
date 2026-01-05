@@ -46,7 +46,7 @@ def _configure_stdio() -> None:
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
-def _create_task(client: ThordataClient) -> Optional[str]:
+def _create_task(client: ThordataClient) -> str | None:
     # Skip if task template env is not provided (keeps CI/offline stable).
     if skip_if_missing(
         [

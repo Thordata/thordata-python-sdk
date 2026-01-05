@@ -22,7 +22,7 @@ import random
 import time
 from dataclasses import dataclass, field
 from functools import wraps
-from typing import Any, Callable, Optional, Set, Tuple
+from typing import Any, Callable, Optional
 
 from .exceptions import (
     ThordataNetworkError,
@@ -64,15 +64,15 @@ class RetryConfig:
     jitter_factor: float = 0.1
 
     # Status codes to retry on (5xx server errors + 429 rate limit)
-    retry_on_status_codes: Set[int] = field(
+    retry_on_status_codes: set[int] = field(
         default_factory=lambda: {429, 500, 502, 503, 504}
     )
-    retry_on_api_codes: Set[int] = field(
+    retry_on_api_codes: set[int] = field(
         default_factory=lambda: {300}  # API response body code
     )
 
     # Exception types to always retry on
-    retry_on_exceptions: Tuple[type, ...] = field(
+    retry_on_exceptions: tuple[type, ...] = field(
         default_factory=lambda: (
             ThordataNetworkError,
             ThordataServerError,
@@ -104,7 +104,7 @@ class RetryConfig:
         return delay
 
     def should_retry(
-        self, exception: Exception, attempt: int, status_code: Optional[int] = None
+        self, exception: Exception, attempt: int, status_code: int | None = None
     ) -> bool:
         """
         Determine if a request should be retried.
@@ -138,8 +138,8 @@ class RetryConfig:
 
 
 def with_retry(
-    config: Optional[RetryConfig] = None,
-    on_retry: Optional[Callable[[int, Exception, float], None]] = None,
+    config: RetryConfig | None = None,
+    on_retry: Callable[[int, Exception, float], None] | None = None,
 ) -> Callable:
     """
     Decorator to add retry logic to a function.
@@ -168,7 +168,7 @@ def with_retry(
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-            last_exception: Optional[Exception] = None
+            last_exception: Exception | None = None
 
             for attempt in range(config.max_retries + 1):
                 try:
@@ -202,7 +202,7 @@ def with_retry(
 
         @wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-            last_exception: Optional[Exception] = None
+            last_exception: Exception | None = None
 
             for attempt in range(config.max_retries + 1):
                 try:
@@ -244,7 +244,7 @@ def with_retry(
     return decorator
 
 
-def _extract_status_code(exception: Exception) -> Optional[int]:
+def _extract_status_code(exception: Exception) -> int | None:
     """
     Extract HTTP status code from various exception types.
 
@@ -302,10 +302,10 @@ class RetryableRequest:
         ...             retry.wait()
     """
 
-    def __init__(self, config: Optional[RetryConfig] = None) -> None:
+    def __init__(self, config: RetryConfig | None = None) -> None:
         self.config = config or RetryConfig()
         self.attempt = 0
-        self.last_exception: Optional[Exception] = None
+        self.last_exception: Exception | None = None
 
     def __enter__(self) -> RetryableRequest:
         return self
@@ -314,7 +314,7 @@ class RetryableRequest:
         pass
 
     def should_continue(
-        self, exception: Exception, status_code: Optional[int] = None
+        self, exception: Exception, status_code: int | None = None
     ) -> bool:
         """
         Check if we should continue retrying.
