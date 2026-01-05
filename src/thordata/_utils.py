@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import platform
 from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
@@ -171,17 +172,19 @@ def extract_error_message(payload: Any) -> str:
 
 def build_user_agent(sdk_version: str, http_client: str) -> str:
     """
-    Build a default User-Agent for the SDK.
-
-    Args:
-        sdk_version: SDK version string.
-        http_client: "requests" or "aiohttp" (or any identifier).
-
-    Returns:
-        A User-Agent string.
+    Build a standardized User-Agent for the SDK.
+    Format: thordata-python-sdk/{version} python/{py_ver} ({system}/{release}; {machine})
     """
-    import platform
-
-    py = platform.python_version()
-    system = platform.system()
-    return f"thordata-python-sdk/{sdk_version} (python {py}; {system}; {http_client})"
+    py_ver = platform.python_version()
+    system = platform.system() or "unknown"
+    release = platform.release() or "unknown"
+    machine = platform.machine() or "unknown"
+    
+    # Clean up strings to avoid UA parsing issues (remove newlines, etc)
+    system = system.replace(";", "").strip()
+    
+    return (
+        f"thordata-python-sdk/{sdk_version} "
+        f"python/{py_ver} "
+        f"({system}/{release}; {machine}; {http_client})"
+    )

@@ -21,6 +21,7 @@ Example:
     >>> results = client.serp_search("python tutorial", engine="google")
 """
 
+
 from __future__ import annotations
 
 import logging
@@ -69,32 +70,6 @@ logger = logging.getLogger(__name__)
 
 
 class ThordataClient:
-    """
-    The official synchronous Python client for Thordata.
-
-    This client handles authentication and communication with:
-    - Proxy Network (Residential/Datacenter/Mobile/ISP via HTTP/HTTPS)
-    - SERP API (Real-time Search Engine Results)
-    - Universal Scraping API (Web Unlocker - Single Page Rendering)
-    - Web Scraper API (Async Task Management)
-
-    Args:
-        scraper_token: The API token from your Dashboard.
-        public_token: The public API token (for task status, locations).
-        public_key: The public API key.
-        proxy_host: Custom proxy gateway host (optional).
-        proxy_port: Custom proxy gateway port (optional).
-        timeout: Default request timeout in seconds (default: 30).
-        retry_config: Configuration for automatic retries (optional).
-
-    Example:
-        >>> client = ThordataClient(
-        ...     scraper_token="your_scraper_token",
-        ...     public_token="your_public_token",
-        ...     public_key="your_public_key"
-        ... )
-    """
-
     # API Endpoints
     BASE_URL = "https://scraperapi.thordata.com"
     UNIVERSAL_URL = "https://universalapi.thordata.com"
@@ -144,14 +119,13 @@ class ThordataClient:
                 f"Invalid auth_mode: {auth_mode}. Must be 'bearer' or 'header_token'."
             )
 
-        # NOTE:
-        # - _proxy_session: used for proxy network traffic to target sites
-        # - _api_session: used for Thordata APIs (SERP/Universal/Tasks/Locations)
-        #
-        # We intentionally do NOT set session-level proxies for _api_session,
-        # so developers can rely on system proxy settings (e.g., Clash) via env vars.
+        # HTTP Sessions
         self._proxy_session = requests.Session()
         self._proxy_session.trust_env = False
+
+        # Cache for ProxyManagers (Connection Pooling Fix)
+        # Key: proxy_url (str), Value: urllib3.ProxyManager
+        self._proxy_managers: Dict[str, urllib3.ProxyManager] = {}
 
         self._api_session = requests.Session()
         self._api_session.trust_env = True
@@ -159,7 +133,7 @@ class ThordataClient:
             {"User-Agent": build_user_agent(_sdk_version, "requests")}
         )
 
-        # Base URLs (allow override via args or env vars for testing and custom routing)
+        # Base URLs
         scraperapi_base = (
             scraperapi_base_url
             or os.getenv("THORDATA_SCRAPERAPI_BASE_URL")
@@ -184,15 +158,13 @@ class ThordataClient:
             or self.LOCATIONS_URL
         ).rstrip("/")
 
-        # These URLs exist in your codebase; keep them for now (even if your org later migrates fully to openapi)
         gateway_base = os.getenv(
             "THORDATA_GATEWAY_BASE_URL", "https://api.thordata.com/api/gateway"
         )
-        child_base = os.getenv(
+        self._gateway_base_url = gateway_base
+        self._child_base_url = os.getenv(
             "THORDATA_CHILD_BASE_URL", "https://api.thordata.com/api/child"
         )
-        self._gateway_base_url = gateway_base
-        self._child_base_url = child_base
 
         self._serp_url = f"{scraperapi_base}/request"
         self._builder_url = f"{scraperapi_base}/builder"
@@ -205,7 +177,6 @@ class ThordataClient:
 
         self._locations_base_url = locations_base
 
-        # These 2 lines keep your existing behavior (derive account endpoints from locations_base)
         self._usage_stats_url = (
             f"{locations_base.replace('/locations', '')}/account/usage-statistics"
         )
@@ -225,7 +196,7 @@ class ThordataClient:
         self._proxy_expiration_url = f"{proxy_api_base}/proxy/expiration-time"
 
     # =========================================================================
-    # Proxy Network Methods (Pure proxy network request functions)
+    # Proxy Network Methods
     # =========================================================================
     def get(
         self,
@@ -235,67 +206,8 @@ class ThordataClient:
         timeout: Optional[int] = None,
         **kwargs: Any,
     ) -> requests.Response:
-        """
-        Send a GET request through the Thordata Proxy Network.
-
-        Args:
-            url: The target URL.
-            proxy_config: Custom proxy configuration for geo-targeting/sessions.
-            timeout: Request timeout in seconds.
-            **kwargs: Additional arguments to pass to requests.get().
-
-        Returns:
-            The response object.
-
-        Example:
-            >>> # Basic request
-            >>> response = client.get("https://httpbin.org/ip")
-            >>>
-            >>> # With geo-targeting
-            >>> from thordata.models import ProxyConfig
-            >>> config = ProxyConfig(
-            ...     username="myuser",
-            ...     password="mypass",
-            ...     country="us",
-            ...     city="seattle"
-            ... )
-            >>> response = client.get("https://httpbin.org/ip", proxy_config=config)
-        """
         logger.debug(f"Proxy GET request: {url}")
-
-        timeout = timeout or self._default_timeout
-
-        if proxy_config is None:
-            proxy_config = self._get_default_proxy_config_from_env()
-
-        if proxy_config is None:
-            raise ThordataConfigError(
-                "Proxy credentials are missing. "
-                "Pass proxy_config=ProxyConfig(username=..., password=..., product=...) "
-                "or set THORDATA_RESIDENTIAL_USERNAME/THORDATA_RESIDENTIAL_PASSWORD (or DATACENTER/MOBILE)."
-            )
-
-        kwargs["proxies"] = proxy_config.to_proxies_dict()
-
-        @with_retry(self._retry_config)
-        def _do() -> requests.Response:
-            return self._proxy_request_with_proxy_manager(
-                "GET",
-                url,
-                proxy_config=proxy_config,
-                timeout=timeout,
-                headers=kwargs.pop("headers", None),
-                params=kwargs.pop("params", None),
-            )
-
-        try:
-            return _do()
-        except requests.Timeout as e:
-            raise ThordataTimeoutError(
-                f"Request timed out: {e}", original_error=e
-            ) from e
-        except Exception as e:
-            raise ThordataNetworkError(f"Request failed: {e}", original_error=e) from e
+        return self._proxy_verb("GET", url, proxy_config, timeout, **kwargs)
 
     def post(
         self,
@@ -305,20 +217,17 @@ class ThordataClient:
         timeout: Optional[int] = None,
         **kwargs: Any,
     ) -> requests.Response:
-        """
-        Send a POST request through the Thordata Proxy Network.
-
-        Args:
-            url: The target URL.
-            proxy_config: Custom proxy configuration.
-            timeout: Request timeout in seconds.
-            **kwargs: Additional arguments to pass to requests.post().
-
-        Returns:
-            The response object.
-        """
         logger.debug(f"Proxy POST request: {url}")
+        return self._proxy_verb("POST", url, proxy_config, timeout, **kwargs)
 
+    def _proxy_verb(
+        self,
+        method: str,
+        url: str,
+        proxy_config: Optional[ProxyConfig],
+        timeout: Optional[int],
+        **kwargs: Any,
+    ) -> requests.Response:
         timeout = timeout or self._default_timeout
 
         if proxy_config is None:
@@ -327,19 +236,21 @@ class ThordataClient:
         if proxy_config is None:
             raise ThordataConfigError(
                 "Proxy credentials are missing. "
-                "Pass proxy_config=ProxyConfig(username=..., password=..., product=...) "
-                "or set THORDATA_RESIDENTIAL_USERNAME/THORDATA_RESIDENTIAL_PASSWORD (or DATACENTER/MOBILE)."
+                "Pass proxy_config or set THORDATA_RESIDENTIAL_USERNAME/PASSWORD env vars."
             )
 
-        kwargs["proxies"] = proxy_config.to_proxies_dict()
+        # For requests/urllib3, we don't need 'proxies' dict in kwargs
+        # because we use ProxyManager directly.
+        # But we remove it if user accidentally passed it to avoid confusion.
+        kwargs.pop("proxies", None)
 
         @with_retry(self._retry_config)
         def _do() -> requests.Response:
             return self._proxy_request_with_proxy_manager(
-                "POST",
+                method,
                 url,
-                proxy_config=proxy_config,
-                timeout=timeout,
+                proxy_config=proxy_config,  # type: ignore
+                timeout=timeout,  # type: ignore
                 headers=kwargs.pop("headers", None),
                 params=kwargs.pop("params", None),
                 data=kwargs.pop("data", None),
@@ -356,8 +267,8 @@ class ThordataClient:
 
     def build_proxy_url(
         self,
-        username: str,  # Required
-        password: str,  # Required
+        username: str,
+        password: str,
         *,
         country: Optional[str] = None,
         state: Optional[str] = None,
@@ -366,28 +277,6 @@ class ThordataClient:
         session_duration: Optional[int] = None,
         product: Union[ProxyProduct, str] = ProxyProduct.RESIDENTIAL,
     ) -> str:
-        """
-        Build a proxy URL with custom targeting options.
-
-        This is a convenience method for creating proxy URLs without
-        manually constructing a ProxyConfig.
-
-        Args:
-            country: Target country code (e.g., 'us', 'gb').
-            state: Target state (e.g., 'california').
-            city: Target city (e.g., 'seattle').
-            session_id: Session ID for sticky sessions.
-            session_duration: Session duration in minutes (1-90).
-            product: Proxy product type.
-
-        Returns:
-            The proxy URL string.
-
-        Example:
-            >>> url = client.build_proxy_url(country="us", city="seattle")
-            >>> proxies = {"http": url, "https": url}
-            >>> requests.get("https://example.com", proxies=proxies)
-        """
         config = ProxyConfig(
             username=username,
             password=password,
@@ -403,7 +292,7 @@ class ThordataClient:
         return config.build_proxy_url()
 
     # =========================================================================
-    # Internal API Request Retry Helper (For all API calls)
+    # Internal Request Helpers
     # =========================================================================
     def _api_request_with_retry(
         self,
@@ -414,8 +303,6 @@ class ThordataClient:
         headers: Optional[Dict[str, str]] = None,
         params: Optional[Dict[str, Any]] = None,
     ) -> requests.Response:
-        """Make an API request with automatic retry on transient failures."""
-
         @with_retry(self._retry_config)
         def _do_request() -> requests.Response:
             return self._api_session.request(
@@ -438,8 +325,83 @@ class ThordataClient:
                 f"API request failed: {e}", original_error=e
             ) from e
 
+    def _get_proxy_manager(self, proxy_url: str) -> urllib3.ProxyManager:
+        """Get or create a ProxyManager for the given proxy URL (Pooled)."""
+        if proxy_url not in self._proxy_managers:
+            # Create a new manager if not cached
+            proxy_ssl_context = None
+            if proxy_url.startswith("https://"):
+                proxy_ssl_context = ssl.create_default_context()
+
+            self._proxy_managers[proxy_url] = urllib3.ProxyManager(
+                proxy_url,
+                proxy_ssl_context=proxy_ssl_context,
+                num_pools=10,  # Allow concurrency
+                maxsize=10,
+            )
+        return self._proxy_managers[proxy_url]
+
+    def _proxy_request_with_proxy_manager(
+        self,
+        method: str,
+        url: str,
+        *,
+        proxy_config: ProxyConfig,
+        timeout: int,
+        headers: Optional[Dict[str, str]] = None,
+        params: Optional[Dict[str, Any]] = None,
+        data: Any = None,
+    ) -> requests.Response:
+        # 1. Prepare URL and Body
+        req = requests.Request(method=method.upper(), url=url, params=params)
+        prepped = self._proxy_session.prepare_request(req)
+        final_url = prepped.url or url
+
+        # 2. Get Proxy Configuration
+        proxy_url = proxy_config.build_proxy_endpoint()
+        proxy_headers = urllib3.make_headers(
+            proxy_basic_auth=proxy_config.build_proxy_basic_auth()
+        )
+
+        # 3. Get Cached Proxy Manager
+        pm = self._get_proxy_manager(proxy_url)
+
+        # 4. Prepare Request Headers/Body
+        req_headers = dict(headers or {})
+        body = None
+        if data is not None:
+            if isinstance(data, dict):
+                body = urlencode({k: str(v) for k, v in data.items()})
+                req_headers.setdefault(
+                    "Content-Type", "application/x-www-form-urlencoded"
+                )
+            else:
+                body = data
+
+        # 5. Execute Request via urllib3
+        http_resp = pm.request(
+            method.upper(),
+            final_url,
+            body=body,
+            headers=req_headers or None,
+            proxy_headers=proxy_headers,  # Attach Auth here
+            timeout=urllib3.Timeout(connect=timeout, read=timeout),
+            retries=False,  # We handle retries in _proxy_verb
+            preload_content=True,
+        )
+
+        # 6. Convert back to requests.Response
+        r = requests.Response()
+        r.status_code = int(getattr(http_resp, "status", 0) or 0)
+        r._content = http_resp.data or b""
+        r.url = final_url
+        r.headers = requests.structures.CaseInsensitiveDict(
+            dict(http_resp.headers or {})
+        )
+        return r
+
     # =========================================================================
-    # SERP API Methods (Search Engine Results Page functions)
+    # SERP API Methods
     # =========================================================================
     def serp_search(
         self,
@@ -456,46 +418,8 @@ class ThordataClient:
         output_format: str = "json",
         **kwargs: Any,
     ) -> Dict[str, Any]:
-        """
-        Execute a real-time SERP (Search Engine Results Page) search.
-
-        Args:
-            query: The search keywords.
-            engine: Search engine (google, bing, yandex, duckduckgo, baidu).
-            num: Number of results to retrieve (default: 10).
-            country: Country code for localized results (e.g., 'us').
-            language: Language code for interface (e.g., 'en').
-            search_type: Type of search (images, news, shopping, videos, etc.).
-            device: Device type ('desktop', 'mobile', 'tablet').
-            render_js: Enable JavaScript rendering in SERP (render_js=True).
-            no_cache: Disable internal caching (no_cache=True).
-            output_format: 'json' to return parsed JSON (default),
-                           'html' to return HTML wrapped in {'html': ...}.
-            **kwargs: Additional engine-specific parameters.
-
-        Returns:
-            Dict[str, Any]: Parsed JSON results or a dict with 'html' key.
-
-        Example:
-            >>> # Basic search
-            >>> results = client.serp_search("python tutorial")
-            >>>
-            >>> # With options
-            >>> results = client.serp_search(
-            ...     "laptop reviews",
-            ...     engine="google",
-            ...     num=20,
-            ...     country="us",
-            ...     search_type="shopping",
-            ...     device="mobile",
-            ...     render_js=True,
-            ...     no_cache=True,
-            ... )
-        """
-        # Normalize engine
         engine_str = engine.value if isinstance(engine, Engine) else engine.lower()
 
-        # Build request using model
         request = SerpRequest(
             query=query,
             engine=engine_str,
@@ -510,83 +434,14 @@ class ThordataClient:
             extra_params=kwargs,
         )
 
-        payload = request.to_payload()
-        headers = build_auth_headers(self.scraper_token, mode=self._auth_mode)
-
-        logger.info(
-            f"SERP Search: {engine_str} - {query[:50]}{'...' if len(query) > 50 else ''}"
-        )
-
-        try:
-            response = self._api_request_with_retry(
-                "POST",
-                self._serp_url,
-                data=payload,
-                headers=headers,
-            )
-            response.raise_for_status()
-
-            # JSON mode (default)
-            if output_format.lower() == "json":
-                data = response.json()
-
-                if isinstance(data, dict):
-                    code = data.get("code")
-                    if code is not None and code != 200:
-                        msg = extract_error_message(data)
-                        raise_for_code(
-                            f"SERP API Error: {msg}",
-                            code=code,
-                            payload=data,
-                        )
-
-                return parse_json_response(data)
-
-            # HTML mode: wrap as dict to keep return type stable
-            return {"html": response.text}
-
-        except requests.Timeout as e:
-            raise ThordataTimeoutError(
-                f"SERP request timed out: {e}",
-                original_error=e,
-            ) from e
-        except requests.RequestException as e:
-            raise ThordataNetworkError(
-                f"SERP request failed: {e}",
-                original_error=e,
-            ) from e
+        return self.serp_search_advanced(request)
 
     def serp_search_advanced(self, request: SerpRequest) -> Dict[str, Any]:
-        """
-        Execute a SERP search using a SerpRequest object.
-
-        This method provides full control over all search parameters.
-
-        Args:
-            request: A SerpRequest object with all parameters configured.
-
-        Returns:
-            Dict[str, Any]: Parsed JSON results or dict with 'html' key.
-
-        Example:
-            >>> from thordata.models import SerpRequest
-            >>> request = SerpRequest(
-            ...     query="python programming",
-            ...     engine="google",
-            ...     num=50,
-            ...     country="us",
-            ...     language="en",
-            ...     search_type="news",
-            ...     time_filter="week",
-            ...     safe_search=True
-            ... )
-            >>> results = client.serp_search_advanced(request)
-        """
         payload = request.to_payload()
         headers = build_auth_headers(self.scraper_token, mode=self._auth_mode)
 
         logger.info(
-            f"SERP Advanced Search: {request.engine} - {request.query[:50]}{'...' if len(request.query) > 50 else ''}"
+            f"SERP Advanced Search: {request.engine} - {request.query[:50]}"
         )
 
         try:
@@ -600,34 +455,22 @@ class ThordataClient:
 
             if request.output_format.lower() == "json":
                 data = response.json()
-
                 if isinstance(data, dict):
                     code = data.get("code")
                     if code is not None and code != 200:
                         msg = extract_error_message(data)
-                        raise_for_code(
-                            f"SERP API Error: {msg}",
-                            code=code,
-                            payload=data,
-                        )
-
+                        raise_for_code(f"SERP Error: {msg}", code=code, payload=data)
                 return parse_json_response(data)
 
             return {"html": response.text}
 
         except requests.Timeout as e:
-            raise ThordataTimeoutError(
-                f"SERP request timed out: {e}",
-                original_error=e,
-            ) from e
+            raise ThordataTimeoutError(f"SERP timeout: {e}", original_error=e) from e
         except requests.RequestException as e:
-            raise ThordataNetworkError(
-                f"SERP request failed: {e}",
-                original_error=e,
-            ) from e
+            raise ThordataNetworkError(f"SERP failed: {e}", original_error=e) from e
 
     # =========================================================================
-    # Universal Scraping API Methods (Web Unlocker functions)
+    # Universal Scraping API
     # =========================================================================
     def universal_scrape(
         self,
@@ -641,37 +484,6 @@ class ThordataClient:
         wait_for: Optional[str] = None,
         **kwargs: Any,
     ) -> Union[str, bytes]:
-        """
-        Scrape a URL using the Universal Scraping API (Web Unlocker).
-
-        Automatically bypasses Cloudflare, CAPTCHAs, and antibot systems.
-
-        Args:
-            url: Target URL.
-            js_render: Enable JavaScript rendering (headless browser).
-            output_format: "html" or "png" (screenshot).
-            country: Geo-targeting country code.
-            block_resources: Resources to block (e.g., 'script,image').
-            wait: Wait time in milliseconds after page load.
-            wait_for: CSS selector to wait for.
-            **kwargs: Additional parameters.
-
-        Returns:
-            HTML string or PNG bytes depending on output_format.
-
-        Example:
-            >>> # Get HTML
-            >>> html = client.universal_scrape("https://example.com", js_render=True)
-            >>>
-            >>> # Get screenshot
-            >>> png = client.universal_scrape(
-            ...     "https://example.com",
-            ...     js_render=True,
-            ...     output_format="png"
-            ... )
-            >>> with open("screenshot.png", "wb") as f:
-            ...     f.write(png)
-        """
         request = UniversalScrapeRequest(
             url=url,
             js_render=js_render,
@@ -682,27 +494,15 @@ class ThordataClient:
             wait_for=wait_for,
             extra_params=kwargs,
         )
-
         return self.universal_scrape_advanced(request)
 
     def universal_scrape_advanced(
         self, request: UniversalScrapeRequest
     ) -> Union[str, bytes]:
-        """
-        Scrape using a UniversalScrapeRequest object for full control.
-
-        Args:
-            request: A UniversalScrapeRequest with all parameters.
-
-        Returns:
-            HTML string or PNG bytes.
-        """
         payload = request.to_payload()
         headers = build_auth_headers(self.scraper_token, mode=self._auth_mode)
 
-        logger.info(
-            f"Universal Scrape: {request.url} (format: {request.output_format})"
-        )
+        logger.info(f"Universal Scrape: {request.url}")
 
         try:
             response = self._api_request_with_retry(
@@ -712,53 +512,36 @@ class ThordataClient:
                 headers=headers,
             )
             response.raise_for_status()
-
             return self._process_universal_response(response, request.output_format)
 
         except requests.Timeout as e:
-            raise ThordataTimeoutError(
-                f"Universal scrape timed out: {e}", original_error=e
-            ) from e
+            raise ThordataTimeoutError(f"Universal timeout: {e}", original_error=e) from e
         except requests.RequestException as e:
-            raise ThordataNetworkError(
-                f"Universal scrape failed: {e}", original_error=e
-            ) from e
+            raise ThordataNetworkError(f"Universal failed: {e}", original_error=e) from e
 
     def _process_universal_response(
         self, response: requests.Response, output_format: str
     ) -> Union[str, bytes]:
-        """Process the response from Universal API."""
-        # Try to parse as JSON
         try:
             resp_json = response.json()
         except ValueError:
-            # Raw content returned
-            if output_format.lower() == "png":
-                return response.content
-            return response.text
+            return response.content if output_format.lower() == "png" else response.text
 
-        # Check for API-level errors
         if isinstance(resp_json, dict):
             code = resp_json.get("code")
             if code is not None and code != 200:
                 msg = extract_error_message(resp_json)
-                raise_for_code(
-                    f"Universal API Error: {msg}", code=code, payload=resp_json
-                )
+                raise_for_code(f"Universal Error: {msg}", code=code, payload=resp_json)
 
-        # Extract HTML
         if "html" in resp_json:
             return resp_json["html"]
-
-        # Extract PNG
         if "png" in resp_json:
             return decode_base64_image(resp_json["png"])
 
-        # Fallback
         return str(resp_json)
 
     # =========================================================================
-    # Web Scraper API Methods (Only async task management functions)
+    # Web Scraper API (Tasks)
     # =========================================================================
     def create_scraper_task(
         self,
@@ -768,29 +551,6 @@ class ThordataClient:
         parameters: Dict[str, Any],
         universal_params: Optional[Dict[str, Any]] = None,
     ) -> str:
-        """
-        Create an asynchronous Web Scraper task.
-
-        Note: Get spider_id and spider_name from the Thordata Dashboard.
-
-        Args:
-            file_name: Name for the output file.
-            spider_id: Spider identifier from Dashboard.
-            spider_name: Spider name (e.g., "youtube.com").
-            parameters: Spider-specific parameters.
-            universal_params: Global spider settings.
-
-        Returns:
-            The created task_id.
-
-        Example:
-            >>> task_id = client.create_scraper_task(
-            ...     file_name="youtube_data",
-            ...     spider_id="youtube_video-post_by-url",
-            ...     spider_name="youtube.com",
-            ...     parameters={"url": "https://youtube.com/@channel/videos"}
-            ... )
-        """
         config = ScraperTaskConfig(
             file_name=file_name,
             spider_id=spider_id,
@@ -798,50 +558,26 @@ class ThordataClient:
             parameters=parameters,
             universal_params=universal_params,
         )
-
         return self.create_scraper_task_advanced(config)
 
     def create_scraper_task_advanced(self, config: ScraperTaskConfig) -> str:
-        """
-        Create a scraper task using a ScraperTaskConfig object.
-
-        Args:
-            config: Task configuration.
-
-        Returns:
-            The created task_id.
-        """
         self._require_public_credentials()
-
         payload = config.to_payload()
-
-        # Builder needs 3 headers: token, key, Authorization Bearer
         headers = build_builder_headers(
-            self.scraper_token,
-            self.public_token or "",
-            self.public_key or "",
+            self.scraper_token, self.public_token or "", self.public_key or ""
         )
-
-        logger.info(f"Creating Scraper Task: {config.spider_name}")
 
         try:
             response = self._api_request_with_retry(
-                "POST",
-                self._builder_url,
-                data=payload,
-                headers=headers,
+                "POST", self._builder_url, data=payload, headers=headers
             )
             response.raise_for_status()
-
             data = response.json()
-            code = data.get("code")
-
-            if code != 200:
-                msg = extract_error_message(data)
-                raise_for_code(f"Task creation failed: {msg}", code=code, payload=data)
-
+            if data.get("code") != 200:
+                raise_for_code(
+                    "Task creation failed", code=data.get("code"), payload=data
+                )
             return data["data"]["task_id"]
-
         except requests.RequestException as e:
             raise ThordataNetworkError(
                 f"Task creation failed: {e}", original_error=e
@@ -855,35 +591,6 @@ class ThordataClient:
         parameters: Dict[str, Any],
         common_settings: "CommonSettings",
     ) -> str:
-        """
-        Create a YouTube video/audio download task.
-
-        Uses the /video_builder endpoint.
-
-        Args:
-            file_name: Output file name. Supports {{TasksID}}, {{VideoID}}.
-            spider_id: Spider identifier (e.g., "youtube_video_by-url").
-            spider_name: Spider name (typically "youtube.com").
-            parameters: Spider parameters (e.g., {"url": "..."}).
-            common_settings: Video/audio settings.
-
-        Returns:
-            The created task_id.
-
-        Example:
-            >>> from thordata import CommonSettings
-            >>> task_id = client.create_video_task(
-            ...     file_name="{{VideoID}}",
-            ...     spider_id="youtube_video_by-url",
-            ...     spider_name="youtube.com",
-            ...     parameters={"url": "https://youtube.com/watch?v=xxx"},
-            ...     common_settings=CommonSettings(
-            ...         resolution="1080p",
-            ...         is_subtitles="true"
-            ...     )
-            ... )
-        """
-
         config = VideoTaskConfig(
             file_name=file_name,
             spider_id=spider_id,
@@ -891,210 +598,93 @@ class ThordataClient:
             parameters=parameters,
             common_settings=common_settings,
         )
-
         return self.create_video_task_advanced(config)
 
     def create_video_task_advanced(self, config: VideoTaskConfig) -> str:
-        """
-        Create a video task using VideoTaskConfig object.
-
-        Args:
-            config: Video task configuration.
-
-        Returns:
-            The created task_id.
-        """
-
         self._require_public_credentials()
-
         payload = config.to_payload()
         headers = build_builder_headers(
-            self.scraper_token,
-            self.public_token or "",
-            self.public_key or "",
+            self.scraper_token, self.public_token or "", self.public_key or ""
         )
-
-        logger.info(f"Creating Video Task: {config.spider_name} - {config.spider_id}")
 
         response = self._api_request_with_retry(
-            "POST",
-            self._video_builder_url,
-            data=payload,
-            headers=headers,
+            "POST", self._video_builder_url, data=payload, headers=headers
         )
         response.raise_for_status()
-
         data = response.json()
-        code = data.get("code")
-
-        if code != 200:
-            msg = extract_error_message(data)
+        if data.get("code") != 200:
             raise_for_code(
-                f"Video task creation failed: {msg}", code=code, payload=data
+                "Video task creation failed", code=data.get("code"), payload=data
             )
-
         return data["data"]["task_id"]
 
     def get_task_status(self, task_id: str) -> str:
-        """
-        Check the status of an asynchronous scraping task.
-
-        Returns:
-            Status string (e.g., "running", "ready", "failed").
-
-        Raises:
-            ThordataConfigError: If public credentials are missing.
-            ThordataAPIError: If API returns a non-200 code in JSON payload.
-            ThordataNetworkError: If network/HTTP request fails.
-        """
         self._require_public_credentials()
-
         headers = build_public_api_headers(
             self.public_token or "", self.public_key or ""
         )
-        payload = {"tasks_ids": task_id}
-
         try:
             response = self._api_request_with_retry(
                 "POST",
                 self._status_url,
-                data=payload,
+                data={"tasks_ids": task_id},
                 headers=headers,
             )
             response.raise_for_status()
             data = response.json()
+            if data.get("code") != 200:
+                raise_for_code("Task status error", code=data.get("code"), payload=data)
 
-            if isinstance(data, dict):
-                code = data.get("code")
-                if code is not None and code != 200:
-                    msg = extract_error_message(data)
-                    raise_for_code(
-                        f"Task status API Error: {msg}",
-                        code=code,
-                        payload=data,
-                    )
-
-                items = data.get("data") or []
-                for item in items:
-                    if str(item.get("task_id")) == str(task_id):
-                        return item.get("status", "unknown")
-
-                return "unknown"
-
-            # Unexpected payload type
-            raise ThordataNetworkError(
-                f"Unexpected task status response type: {type(data).__name__}",
-                original_error=None,
-            )
-
-        except requests.Timeout as e:
-            raise ThordataTimeoutError(
-                f"Status check timed out: {e}", original_error=e
-            ) from e
+            items = data.get("data") or []
+            for item in items:
+                if str(item.get("task_id")) == str(task_id):
+                    return item.get("status", "unknown")
+            return "unknown"
         except requests.RequestException as e:
-            raise ThordataNetworkError(
-                f"Status check failed: {e}", original_error=e
-            ) from e
+            raise ThordataNetworkError(f"Status check failed: {e}", original_error=e) from e
 
     def safe_get_task_status(self, task_id: str) -> str:
-        """
-        Backward-compatible status check.
-
-        Returns:
-            Status string, or "error" on any exception.
-        """
         try:
             return self.get_task_status(task_id)
         except Exception:
             return "error"
 
     def get_task_result(self, task_id: str, file_type: str = "json") -> str:
-        """
-        Get the download URL for a completed task.
-        """
         self._require_public_credentials()
-
         headers = build_public_api_headers(
             self.public_token or "", self.public_key or ""
         )
-        payload = {"tasks_id": task_id, "type": file_type}
-
-        logger.info(f"Getting result URL for Task: {task_id}")
-
         try:
             response = self._api_request_with_retry(
                 "POST",
                 self._download_url,
-                data=payload,
+                data={"tasks_id": task_id, "type": file_type},
                 headers=headers,
             )
             response.raise_for_status()
-
             data = response.json()
-            code = data.get("code")
-
-            if code == 200 and data.get("data"):
+            if data.get("code") == 200 and data.get("data"):
                 return data["data"]["download"]
-
-            msg = extract_error_message(data)
-            raise_for_code(f"Get result failed: {msg}", code=code, payload=data)
-            # This line won't be reached, but satisfies mypy
-            raise RuntimeError("Unexpected state")
-
+            raise_for_code("Get result failed", code=data.get("code"), payload=data)
+            return ""
         except requests.RequestException as e:
-            raise ThordataNetworkError(
-                f"Get result failed: {e}", original_error=e
-            ) from e
+            raise ThordataNetworkError(f"Get result failed: {e}", original_error=e) from e
 
-    def list_tasks(
-        self,
-        page: int = 1,
-        size: int = 20,
-    ) -> Dict[str, Any]:
-        """
-        List all Web Scraper tasks.
-
-        Args:
-            page: Page number (starts from 1).
-            size: Number of tasks per page.
-
-        Returns:
-            Dict containing 'count' and 'list' of tasks.
-
-        Example:
-            >>> result = client.list_tasks(page=1, size=10)
-            >>> print(f"Total tasks: {result['count']}")
-            >>> for task in result['list']:
-            ...     print(f"Task {task['task_id']}: {task['status']}")
-        """
+    def list_tasks(self, page: int = 1, size: int = 20) -> Dict[str, Any]:
         self._require_public_credentials()
-
         headers = build_public_api_headers(
             self.public_token or "", self.public_key or ""
         )
-        payload: Dict[str, Any] = {}
-        if page:
-            payload["page"] = str(page)
-        if size:
-            payload["size"] = str(size)
-
-        logger.info(f"Listing tasks: page={page}, size={size}")
-
         response = self._api_request_with_retry(
             "POST",
             self._list_url,
-            data=payload,
+            data={"page": str(page), "size": str(size)},
             headers=headers,
         )
         response.raise_for_status()
-
         data = response.json()
-        code = data.get("code")
-
-        if code != 200:
-            msg = extract_error_message(data)
-            raise_for_code(f"List tasks failed: {msg}", code=code, payload=data)
-
+        if data.get("code") != 200:
+            raise_for_code("List tasks failed", code=data.get("code"), payload=data)
         return data.get("data", {"count": 0, "list": []})
 
     def wait_for_task(
@@ -1104,84 +694,32 @@ class ThordataClient:
         poll_interval: float = 5.0,
         max_wait: float = 600.0,
     ) -> str:
-        """
-        Wait for a task to complete.
-
-        Args:
-            task_id: The task ID to wait for.
-            poll_interval: Seconds between status checks.
-            max_wait: Maximum seconds to wait.
-
-        Returns:
-            Final task status.
-
-        Raises:
-            TimeoutError: If max_wait is exceeded.
-
-        Example:
-            >>> task_id = client.create_scraper_task(...)
-            >>> status = client.wait_for_task(task_id, max_wait=300)
-            >>> if status in ("ready", "success"):
-            ...     url = client.get_task_result(task_id)
-        """
         import time
 
         start = time.monotonic()
-
         while (time.monotonic() - start) < max_wait:
             status = self.get_task_status(task_id)
-
-            logger.debug(f"Task {task_id} status: {status}")
-
-            terminal_statuses = {
+            if status.lower() in {
                 "ready",
                 "success",
                 "finished",
                 "failed",
                 "error",
                 "cancelled",
-            }
-
-            if status.lower() in terminal_statuses:
+            }:
                 return status
-
             time.sleep(poll_interval)
-
-        raise TimeoutError(f"Task {task_id} did not complete within {max_wait} seconds")
+        raise TimeoutError(f"Task {task_id} timeout")
 
     # =========================================================================
-    # Proxy Account Management Methods (Proxy balance, user, whitelist functions)
+    # Account / Locations / Utils
     # =========================================================================
     def get_usage_statistics(
         self,
         from_date: Union[str, date],
         to_date: Union[str, date],
     ) -> UsageStatistics:
-        """
-        Get account usage statistics for a date range.
-
-        Args:
-            from_date: Start date (YYYY-MM-DD string or date object).
-            to_date: End date (YYYY-MM-DD string or date object).
-
-        Returns:
-            UsageStatistics object with traffic data.
-
-        Raises:
-            ValueError: If date range exceeds 180 days.
-
-        Example:
-            >>> from datetime import date, timedelta
-            >>> today = date.today()
-            >>> week_ago = today - timedelta(days=7)
-            >>> stats = client.get_usage_statistics(week_ago, today)
-            >>> print(f"Used: {stats.range_usage_gb():.2f} GB")
-            >>> print(f"Balance: {stats.balance_gb():.2f} GB")
-        """
-
         self._require_public_credentials()
-
-        # Convert dates to strings
         if isinstance(from_date, date):
             from_date = from_date.strftime("%Y-%m-%d")
         if isinstance(to_date, date):
@@ -1193,151 +731,33 @@ class ThordataClient:
             "from_date": from_date,
             "to_date": to_date,
         }
-
-        logger.info(f"Getting usage statistics: {from_date} to {to_date}")
-
         response = self._api_request_with_retry(
-            "GET",
-            self._usage_stats_url,
-            params=params,
+            "GET", self._usage_stats_url, params=params
         )
         response.raise_for_status()
-
         data = response.json()
-
-        if isinstance(data, dict):
-            code = data.get("code")
-            if code is not None and code != 200:
-                msg = extract_error_message(data)
-                raise_for_code(
-                    f"Usage statistics error: {msg}",
-                    code=code,
-                    payload=data,
-                )
-
-            # Extract data field
-            usage_data = data.get("data", data)
-            return UsageStatistics.from_dict(usage_data)
-
-        raise ThordataNetworkError(
-            f"Unexpected usage statistics response: {type(data).__name__}",
-            original_error=None,
-        )
-
-    def get_residential_balance(self) -> Dict[str, Any]:
-        """
-        Get residential proxy balance.
-
-        Uses public_token/public_key (Dashboard -> My account -> API).
-        """
-        headers = self._build_gateway_headers()
-
-        logger.info("Getting residential proxy balance")
-
-        response = self._api_request_with_retry(
-            "POST",
-            f"{self._gateway_base_url}/getFlowBalance",
-            headers=headers,
-            data={},
-        )
-        response.raise_for_status()
-
-        data = response.json()
-        code = data.get("code")
-
-        if code != 200:
-            msg = extract_error_message(data)
-            raise_for_code(f"Get balance failed: {msg}", code=code, payload=data)
-
-        return data.get("data", {})
-
-    def get_residential_usage(
-        self,
-        start_time: Union[str, int],
-        end_time: Union[str, int],
-    ) -> Dict[str, Any]:
-        """
-        Get residential proxy usage records.
-
-        Uses public_token/public_key (Dashboard -> My account -> API).
-        """
-        headers = self._build_gateway_headers()
-        payload = {"start_time": str(start_time), "end_time": str(end_time)}
-
-        logger.info(f"Getting residential usage: {start_time} to {end_time}")
-
-        response = self._api_request_with_retry(
-            "POST",
-            f"{self._gateway_base_url}/usageRecord",
-            headers=headers,
-            data=payload,
-        )
-        response.raise_for_status()
-
-        data = response.json()
-        code = data.get("code")
-
-        if code != 200:
-            msg = extract_error_message(data)
-            raise_for_code(f"Get usage failed: {msg}", code=code, payload=data)
-
-        return data.get("data", {})
+        if data.get("code") != 200:
+            raise_for_code("Usage stats error", code=data.get("code"), payload=data)
+        return UsageStatistics.from_dict(data.get("data", data))
 
     def list_proxy_users(
         self, proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL
     ) -> ProxyUserList:
-        """
-        List all proxy users (sub-accounts).
-
-        Args:
-            proxy_type: Proxy type (1=Residential, 2=Unlimited).
-
-        Returns:
-            ProxyUserList with user details.
-
-        Example:
-            >>> users = client.list_proxy_users(proxy_type=ProxyType.RESIDENTIAL)
-            >>> print(f"Total users: {users.user_count}")
-            >>> for user in users.users:
-            ...     print(f"{user.username}: {user.usage_gb():.2f} GB used")
-        """
-
         self._require_public_credentials()
-
+        pt = int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
         params = {
             "token": self.public_token,
             "key": self.public_key,
-            "proxy_type": str(
-                int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
-            ),
+            "proxy_type": str(pt),
         }
-
-        logger.info(f"Listing proxy users: type={params['proxy_type']}")
-
         response = self._api_request_with_retry(
-            "GET",
-            f"{self._proxy_users_url}/user-list",
-            params=params,
+            "GET", f"{self._proxy_users_url}/user-list", params=params
         )
         response.raise_for_status()
-
         data = response.json()
-
-        if isinstance(data, dict):
-            code = data.get("code")
-            if code is not None and code != 200:
-                msg = extract_error_message(data)
-                raise_for_code(
-                    f"List proxy users error: {msg}", code=code, payload=data
-                )
-
-            user_data = data.get("data", data)
-            return ProxyUserList.from_dict(user_data)
-
-        raise ThordataNetworkError(
-            f"Unexpected proxy users response: {type(data).__name__}",
-            original_error=None,
-        )
+        if data.get("code") != 200:
+            raise_for_code("List users error", code=data.get("code"), payload=data)
+        return ProxyUserList.from_dict(data.get("data", data))
 
     def create_proxy_user(
         self,
@@ -1347,45 +767,18 @@ class ThordataClient:
         traffic_limit: int = 0,
         status: bool = True,
     ) -> Dict[str, Any]:
-        """
-        Create a new proxy user (sub-account).
-
-        Args:
-            username: Username for the new user.
-            password: Password for the new user.
-            proxy_type: Proxy type (1=Residential, 2=Unlimited).
-            traffic_limit: Traffic limit in MB (0 = unlimited, min 100).
-            status: Enable/disable user (True/False).
-
-        Returns:
-            API response data.
-
-        Example:
-            >>> result = client.create_proxy_user(
-            ...     username="subuser1",
-            ...     password="securepass",
-            ...     traffic_limit=5120,  # 5GB
-            ...     status=True
-            ... )
-        """
         self._require_public_credentials()
-
+        pt = int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
         headers = build_public_api_headers(
             self.public_token or "", self.public_key or ""
         )
-
         payload = {
-            "proxy_type": str(
-                int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
-            ),
+            "proxy_type": str(pt),
             "username": username,
             "password": password,
             "traffic_limit": str(traffic_limit),
             "status": "true" if status else "false",
         }
-
-        logger.info(f"Creating proxy user: {username}")
-
         response = self._api_request_with_retry(
             "POST",
             f"{self._proxy_users_url}/create-user",
@@ -1393,14 +786,9 @@ class ThordataClient:
             headers=headers,
         )
         response.raise_for_status()
-
         data = response.json()
-        code = data.get("code")
-
-        if code != 200:
-            msg = extract_error_message(data)
-            raise_for_code(f"Create proxy user failed: {msg}", code=code, payload=data)
-
+        if data.get("code") != 200:
+            raise_for_code("Create user failed", code=data.get("code"), payload=data)
         return data.get("data", {})
 
     def add_whitelist_ip(
@@ -1409,296 +797,82 @@ class ThordataClient:
         proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL,
         status: bool = True,
     ) -> Dict[str, Any]:
-        """
-        Add an IP to the whitelist for IP authentication.
-
-        Args:
-            ip: IP address to whitelist.
-            proxy_type: Proxy type (1=Residential, 2=Unlimited, 9=Mobile).
-            status: Enable/disable the IP (True/False).
-
-        Returns:
-            API response data.
-
-        Example:
-            >>> result = client.add_whitelist_ip(
-            ...     ip="123.45.67.89",
-            ...     proxy_type=ProxyType.RESIDENTIAL,
-            ...     status=True
-            ... )
-        """
         self._require_public_credentials()
-
+        pt = int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
         headers = build_public_api_headers(
             self.public_token or "", self.public_key or ""
         )
-
-        # Convert ProxyType to int
-        proxy_type_int = (
-            int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
-        )
-
         payload = {
-            "proxy_type": str(proxy_type_int),
+            "proxy_type": str(pt),
             "ip": ip,
             "status": "true" if status else "false",
         }
-
-        logger.info(f"Adding whitelist IP: {ip}")
-
         response = self._api_request_with_retry(
-            "POST",
-            f"{self._whitelist_url}/add-ip",
-            data=payload,
-            headers=headers,
+            "POST", f"{self._whitelist_url}/add-ip", data=payload, headers=headers
         )
         response.raise_for_status()
-
         data = response.json()
-        code = data.get("code")
-
-        if code != 200:
-            msg = extract_error_message(data)
-            raise_for_code(f"Add whitelist IP failed: {msg}", code=code, payload=data)
-
+        if data.get("code") != 200:
+            raise_for_code("Add whitelist IP failed", code=data.get("code"), payload=data)
         return data.get("data", {})
 
-    def list_proxy_servers(
-        self,
-        proxy_type: int,
-    ) -> List[ProxyServer]:
-        """
-        List ISP or Datacenter proxy servers.
-
-        Args:
-            proxy_type: Proxy type (1=ISP, 2=Datacenter).
-
-        Returns:
-            List of ProxyServer objects.
-
-        Example:
-            >>> servers = client.list_proxy_servers(proxy_type=1)  # ISP proxies
-            >>> for server in servers:
-            ...     print(f"{server.ip}:{server.port} - expires: {server.expiration_time}")
-        """
-
+    def list_proxy_servers(self, proxy_type: int) -> List[ProxyServer]:
         self._require_public_credentials()
-
         params = {
             "token": self.public_token,
             "key": self.public_key,
             "proxy_type": str(proxy_type),
         }
-
-        logger.info(f"Listing proxy servers: type={proxy_type}")
-
         response = self._api_request_with_retry(
-            "GET",
-            self._proxy_list_url,
-            params=params,
+            "GET", self._proxy_list_url, params=params
         )
         response.raise_for_status()
-
         data = response.json()
-
+        if data.get("code") != 200:
+            raise_for_code("List proxy servers error", code=data.get("code"), payload=data)
+        
+        server_list = []
         if isinstance(data, dict):
-            code = data.get("code")
-            if code is not None and code != 200:
-                msg = extract_error_message(data)
-                raise_for_code(
-                    f"List proxy servers error: {msg}", code=code, payload=data
-                )
-
-            # Extract list from data field
             server_list = data.get("data", data.get("list", []))
         elif isinstance(data, list):
             server_list = data
-        else:
-            raise ThordataNetworkError(
-                f"Unexpected proxy list response: {type(data).__name__}",
-                original_error=None,
-            )
-
+            
         return [ProxyServer.from_dict(s) for s in server_list]
 
-    def get_isp_regions(self) -> List[Dict[str, Any]]:
-        """
-        Get available ISP proxy regions.
-
-        Uses public_token/public_key (Dashboard -> My account -> API).
-        """
-        headers = self._build_gateway_headers()
-
-        logger.info("Getting ISP regions")
-
-        response = self._api_request_with_retry(
-            "POST",
-            f"{self._gateway_base_url}/getRegionIsp",
-            headers=headers,
-            data={},
-        )
-        response.raise_for_status()
-
-        data = response.json()
-        code = data.get("code")
-
-        if code != 200:
-            msg = extract_error_message(data)
-            raise_for_code(f"Get ISP regions failed: {msg}", code=code, payload=data)
-
-        return data.get("data", [])
-
-    def list_isp_proxies(self) -> List[Dict[str, Any]]:
-        """
-        List ISP proxies.
-
-        Uses public_token/public_key (Dashboard -> My account -> API).
-        """
-        headers = self._build_gateway_headers()
-
-        logger.info("Listing ISP proxies")
-
-        response = self._api_request_with_retry(
-            "POST",
-            f"{self._gateway_base_url}/queryListIsp",
-            headers=headers,
-            data={},
-        )
-        response.raise_for_status()
-
-        data = response.json()
-        code = data.get("code")
-
-        if code != 200:
-            msg = extract_error_message(data)
-            raise_for_code(f"List ISP proxies failed: {msg}", code=code, payload=data)
-
-        return data.get("data", [])
-
-    def get_wallet_balance(self) -> Dict[str, Any]:
-        """
-        Get wallet balance for ISP proxies.
-
-        Uses public_token/public_key (Dashboard -> My account -> API).
-        """
-        headers = self._build_gateway_headers()
-
-        logger.info("Getting wallet balance")
-
-        response = self._api_request_with_retry(
-            "POST",
-            f"{self._gateway_base_url}/getBalance",
-            headers=headers,
-            data={},
-        )
-        response.raise_for_status()
-
-        data = response.json()
-        code = data.get("code")
-
-        if code != 200:
-            msg = extract_error_message(data)
-            raise_for_code(f"Get wallet balance failed: {msg}", code=code, payload=data)
-
-        return data.get("data", {})
-
     def get_proxy_expiration(
-        self,
-        ips: Union[str, List[str]],
-        proxy_type: int,
+        self, ips: Union[str, List[str]], proxy_type: int
     ) -> Dict[str, Any]:
-        """
-        Get expiration time for specific proxy IPs.
-
-        Args:
-            ips: Single IP or list of IPs to check.
-            proxy_type: Proxy type (1=ISP, 2=Datacenter).
-
-        Returns:
-            Dict with expiration information.
-
-        Example:
-            >>> result = client.get_proxy_expiration("123.45.67.89", proxy_type=1)
-            >>> print(result)
-        """
         self._require_public_credentials()
-
-        # Convert list to comma-separated string
         if isinstance(ips, list):
             ips = ",".join(ips)
-
         params = {
             "token": self.public_token,
             "key": self.public_key,
             "proxy_type": str(proxy_type),
             "ips": ips,
         }
-
-        logger.info(f"Getting proxy expiration: {ips}")
-
         response = self._api_request_with_retry(
-            "GET",
-            self._proxy_expiration_url,
-            params=params,
+            "GET", self._proxy_expiration_url, params=params
         )
         response.raise_for_status()
-
         data = response.json()
+        if data.get("code") != 200:
+            raise_for_code("Get expiration error", code=data.get("code"), payload=data)
+        return data.get("data", data)
 
-        if isinstance(data, dict):
-            code = data.get("code")
-            if code is not None and code != 200:
-                msg = extract_error_message(data)
-                raise_for_code(f"Get expiration error: {msg}", code=code, payload=data)
-
-            return data.get("data", data)
-
-        return data
-
-    # =========================================================================
-    # Location API Methods (Country/State/City/ASN functions)
-    # =========================================================================
     def list_countries(
         self, proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL
     ) -> List[Dict[str, Any]]:
-        """
-        List supported countries for proxies.
-
-        Args:
-            proxy_type: 1 for residential, 2 for unlimited.
-
-        Returns:
-            List of country records with 'country_code' and 'country_name'.
-        """
-        return self._get_locations(
-            "countries",
-            proxy_type=(
-                int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
-            ),
-        )
+        pt = int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
+        return self._get_locations("countries", proxy_type=pt)
 
     def list_states(
         self,
         country_code: str,
         proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL,
     ) -> List[Dict[str, Any]]:
-        """
-        List supported states for a country.
-
-        Args:
-            country_code: Country code (e.g., 'US').
-            proxy_type: Proxy type.
-
-        Returns:
-            List of state records.
-        """
-        return self._get_locations(
-            "states",
-            proxy_type=(
-                int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
-            ),
-            country_code=country_code,
-        )
+        pt = int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
+        return self._get_locations("states", proxy_type=pt, country_code=country_code)
 
     def list_cities(
         self,
@@ -1706,26 +880,10 @@ class ThordataClient:
         state_code: Optional[str] = None,
         proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL,
     ) -> List[Dict[str, Any]]:
-        """
-        List supported cities for a country/state.
-
-        Args:
-            country_code: Country code.
-            state_code: Optional state code.
-            proxy_type: Proxy type.
-
-        Returns:
-            List of city records.
-        """
-        kwargs = {
-            "proxy_type": (
-                int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
-            ),
-            "country_code": country_code,
-        }
+        pt = int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
+        kwargs = {"proxy_type": pt, "country_code": country_code}
         if state_code:
             kwargs["state_code"] = state_code
-
         return self._get_locations("cities", **kwargs)
 
     def list_asn(
@@ -1733,88 +891,36 @@ class ThordataClient:
         country_code: str,
         proxy_type: Union[ProxyType, int] = ProxyType.RESIDENTIAL,
     ) -> List[Dict[str, Any]]:
-        """
-        List supported ASNs for a country.
-
-        Args:
-            country_code: Country code.
-            proxy_type: Proxy type.
-
-        Returns:
-            List of ASN records.
-        """
-        return self._get_locations(
-            "asn",
-            proxy_type=(
-                int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
-            ),
-            country_code=country_code,
-        )
+        pt = int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
+        return self._get_locations("asn", proxy_type=pt, country_code=country_code)
 
     def _get_locations(self, endpoint: str, **kwargs: Any) -> List[Dict[str, Any]]:
-        """Internal method to call locations API."""
         self._require_public_credentials()
-
-        params = {
-            "token": self.public_token,
-            "key": self.public_key,
-        }
-
-        for key, value in kwargs.items():
-            params[key] = str(value)
-
-        url = f"{self._locations_base_url}/{endpoint}"
-
-        logger.debug(f"Locations API request: {url}")
-
-        # Use requests.get directly (no proxy needed for this API)
+        params = {"token": self.public_token, "key": self.public_key}
+        for k, v in kwargs.items():
+            params[k] = str(v)
+        
         response = self._api_request_with_retry(
-            "GET",
-            url,
-            params=params,
+            "GET", f"{self._locations_base_url}/{endpoint}", params=params
         )
         response.raise_for_status()
-
         data = response.json()
-
         if isinstance(data, dict):
-            code = data.get("code")
-            if code is not None and code != 200:
-                msg = data.get("msg", "")
-                raise RuntimeError(
-                    f"Locations API error ({endpoint}): code={code}, msg={msg}"
-                )
+            if data.get("code") != 200:
+                raise RuntimeError(f"Locations error: {data.get('msg')}")
             return data.get("data") or []
+        return data if isinstance(data, list) else []
 
-        if isinstance(data, list):
-            return data
-
-        return []
-
-    # =========================================================================
-    # Helper Methods (Internal utility functions)
-    # =========================================================================
     def _require_public_credentials(self) -> None:
-        """Ensure public API credentials are available."""
         if not self.public_token or not self.public_key:
             raise ThordataConfigError(
-                "public_token and public_key are required for this operation. "
-                "Please provide them when initializing ThordataClient."
+                "public_token and public_key are required for this operation."
             )
 
     def _get_proxy_endpoint_overrides(
         self, product: ProxyProduct
     ) -> tuple[Optional[str], Optional[int], str]:
-        """
-        Read proxy endpoint overrides from env.
-
-        Priority:
-        1) THORDATA_<PRODUCT>_PROXY_HOST/PORT/PROTOCOL
-        2) THORDATA_PROXY_HOST/PORT/PROTOCOL
-        3) defaults (host/port None => ProxyConfig will use its product defaults)
-        """
-        prefix = product.value.upper()  # RESIDENTIAL / DATACENTER / MOBILE / ISP
-
+        prefix = product.value.upper()
         host = os.getenv(f"THORDATA_{prefix}_PROXY_HOST") or os.getenv(
             "THORDATA_PROXY_HOST"
         )
@@ -1826,184 +932,37 @@ class ThordataClient:
             or os.getenv("THORDATA_PROXY_PROTOCOL")
             or "http"
         )
-
-        port: Optional[int] = None
-        if port_raw:
-            try:
-                port = int(port_raw)
-            except ValueError:
-                port = None
-
+        port = int(port_raw) if port_raw and port_raw.isdigit() else None
         return host or None, port, protocol
 
     def _get_default_proxy_config_from_env(self) -> Optional[ProxyConfig]:
-        """
-        Try to build a default ProxyConfig from env vars.
-
-        Priority order:
-        1) Residential
-        2) Datacenter
-        3) Mobile
-        """
-        # Residential
-        u = os.getenv("THORDATA_RESIDENTIAL_USERNAME")
-        p = os.getenv("THORDATA_RESIDENTIAL_PASSWORD")
-        if u and p:
-            host, port, protocol = self._get_proxy_endpoint_overrides(
-                ProxyProduct.RESIDENTIAL
-            )
-            return ProxyConfig(
-                username=u,
-                password=p,
-                product=ProxyProduct.RESIDENTIAL,
-                host=host,
-                port=port,
-                protocol=protocol,
-            )
-
-        # Datacenter
-        u = os.getenv("THORDATA_DATACENTER_USERNAME")
-        p = os.getenv("THORDATA_DATACENTER_PASSWORD")
-        if u and p:
-            host, port, protocol = self._get_proxy_endpoint_overrides(
-                ProxyProduct.DATACENTER
-            )
-            return ProxyConfig(
-                username=u,
-                password=p,
-                product=ProxyProduct.DATACENTER,
-                host=host,
-                port=port,
-                protocol=protocol,
-            )
-
-        # Mobile
-        u = os.getenv("THORDATA_MOBILE_USERNAME")
-        p = os.getenv("THORDATA_MOBILE_PASSWORD")
-        if u and p:
-            host, port, protocol = self._get_proxy_endpoint_overrides(
-                ProxyProduct.MOBILE
-            )
-            return ProxyConfig(
-                username=u,
-                password=p,
-                product=ProxyProduct.MOBILE,
-                host=host,
-                port=port,
-                protocol=protocol,
-            )
-
+        for prod in [
+            ProxyProduct.RESIDENTIAL,
+            ProxyProduct.DATACENTER,
+            ProxyProduct.MOBILE,
+        ]:
+            prefix = prod.value.upper()
+            u = os.getenv(f"THORDATA_{prefix}_USERNAME")
+            p = os.getenv(f"THORDATA_{prefix}_PASSWORD")
+            if u and p:
+                h, port, proto = self._get_proxy_endpoint_overrides(prod)
+                return ProxyConfig(
+                    username=u,
+                    password=p,
+                    product=prod,
+                    host=h,
+                    port=port,
+                    protocol=proto,
+                )
         return None
 
-    def _build_gateway_headers(self) -> Dict[str, str]:
-        """
-        Build headers for legacy gateway-style endpoints.
-
-        IMPORTANT:
-        - SDK does NOT expose "sign/apiKey" as a separate credential model.
-        - Values ALWAYS come from public_token/public_key.
-        - Some backend endpoints may still expect header field names "sign" and "apiKey".
-        """
-        self._require_public_credentials()
-        return {
-            "sign": self.public_token or "",
-            "apiKey": self.public_key or "",
-            "Content-Type": "application/x-www-form-urlencoded",
-        }
-
-    def _proxy_request_with_proxy_manager(
-        self,
-        method: str,
-        url: str,
-        *,
-        proxy_config: ProxyConfig,
-        timeout: int,
-        headers: Optional[Dict[str, str]] = None,
-        params: Optional[Dict[str, Any]] = None,
-        data: Any = None,
-    ) -> requests.Response:
-        """
-        Proxy Network request implemented via urllib3.ProxyManager.
-
-        This is required to reliably support HTTPS proxy endpoints like:
-        https://<endpoint>.pr.thordata.net:9999
-        """
-        # Build final URL (include query params)
-        req = requests.Request(method=method.upper(), url=url, params=params)
-        prepped = self._proxy_session.prepare_request(req)
-        final_url = prepped.url or url
-
-        proxy_url = proxy_config.build_proxy_endpoint()
-        proxy_headers = urllib3.make_headers(
-            proxy_basic_auth=proxy_config.build_proxy_basic_auth()
-        )
-
-        pm = urllib3.ProxyManager(
-            proxy_url,
-            proxy_headers=proxy_headers,
-            proxy_ssl_context=(
-                ssl.create_default_context()
-                if proxy_url.startswith("https://")
-                else None
-            ),
-        )
-
-        # Encode form data if dict
-        body = None
-        req_headers = dict(headers or {})
-        if data is not None:
-            if isinstance(data, dict):
-                # form-urlencoded
-                body = urlencode({k: str(v) for k, v in data.items()})
-                req_headers.setdefault(
-                    "Content-Type", "application/x-www-form-urlencoded"
-                )
-            else:
-                body = data
-
-        http_resp = pm.request(
-            method.upper(),
-            final_url,
-            body=body,
-            headers=req_headers or None,
-            timeout=urllib3.Timeout(connect=timeout, read=timeout),
-            retries=False,
-            preload_content=True,
-        )
-
-        # Convert urllib3 response -> requests.Response (keep your API stable)
-        r = requests.Response()
-        r.status_code = int(getattr(http_resp, "status", 0) or 0)
-        r._content = http_resp.data or b""
-        r.url = final_url
-        r.headers = requests.structures.CaseInsensitiveDict(
-            dict(http_resp.headers or {})
-        )
-        return r
-
-    def _request_with_retry(
-        self, method: str, url: str, **kwargs: Any
-    ) -> requests.Response:
-        """Make a request with automatic retry."""
-        kwargs.setdefault("timeout", self._default_timeout)
-
-        @with_retry(self._retry_config)
-        def _do_request() -> requests.Response:
-            return self._proxy_session.request(method, url, **kwargs)
-
-        try:
-            return _do_request()
-        except requests.Timeout as e:
-            raise ThordataTimeoutError(
-                f"Request timed out: {e}", original_error=e
-            ) from e
-        except requests.RequestException as e:
-            raise ThordataNetworkError(f"Request failed: {e}", original_error=e) from e
-
     def close(self) -> None:
-        """Close the underlying session."""
         self._proxy_session.close()
         self._api_session.close()
+        # Clean up connection pools
+        for pm in self._proxy_managers.values():
+            pm.clear()
+        self._proxy_managers.clear()
 
     def __enter__(self) -> ThordataClient:
         return self
