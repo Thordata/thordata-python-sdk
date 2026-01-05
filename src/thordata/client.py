@@ -21,7 +21,6 @@ Example:
     >>> results = client.serp_search("python tutorial", engine="google")
 """
 
-
 from __future__ import annotations
 
 import logging
@@ -440,9 +439,7 @@ class ThordataClient:
         payload = request.to_payload()
         headers = build_auth_headers(self.scraper_token, mode=self._auth_mode)
 
-        logger.info(
-            f"SERP Advanced Search: {request.engine} - {request.query[:50]}"
-        )
+        logger.info(f"SERP Advanced Search: {request.engine} - {request.query[:50]}")
 
         try:
             response = self._api_request_with_retry(
@@ -515,9 +512,13 @@ class ThordataClient:
             return self._process_universal_response(response, request.output_format)
 
         except requests.Timeout as e:
-            raise ThordataTimeoutError(f"Universal timeout: {e}", original_error=e) from e
+            raise ThordataTimeoutError(
+                f"Universal timeout: {e}", original_error=e
+            ) from e
         except requests.RequestException as e:
-            raise ThordataNetworkError(f"Universal failed: {e}", original_error=e) from e
+            raise ThordataNetworkError(
+                f"Universal failed: {e}", original_error=e
+            ) from e
 
     def _process_universal_response(
         self, response: requests.Response, output_format: str
@@ -641,7 +642,9 @@ class ThordataClient:
                     return item.get("status", "unknown")
             return "unknown"
         except requests.RequestException as e:
-            raise ThordataNetworkError(f"Status check failed: {e}", original_error=e) from e
+            raise ThordataNetworkError(
+                f"Status check failed: {e}", original_error=e
+            ) from e
 
     def safe_get_task_status(self, task_id: str) -> str:
         try:
@@ -668,7 +671,9 @@ class ThordataClient:
             raise_for_code("Get result failed", code=data.get("code"), payload=data)
             return ""
         except requests.RequestException as e:
-            raise ThordataNetworkError(f"Get result failed: {e}", original_error=e) from e
+            raise ThordataNetworkError(
+                f"Get result failed: {e}", original_error=e
+            ) from e
 
     def list_tasks(self, page: int = 1, size: int = 20) -> Dict[str, Any]:
         self._require_public_credentials()
@@ -813,7 +818,9 @@ class ThordataClient:
         response.raise_for_status()
         data = response.json()
         if data.get("code") != 200:
-            raise_for_code("Add whitelist IP failed", code=data.get("code"), payload=data)
+            raise_for_code(
+                "Add whitelist IP failed", code=data.get("code"), payload=data
+            )
         return data.get("data", {})
 
     def list_proxy_servers(self, proxy_type: int) -> List[ProxyServer]:
@@ -829,14 +836,16 @@ class ThordataClient:
         response.raise_for_status()
         data = response.json()
         if data.get("code") != 200:
-            raise_for_code("List proxy servers error", code=data.get("code"), payload=data)
-        
+            raise_for_code(
+                "List proxy servers error", code=data.get("code"), payload=data
+            )
+
         server_list = []
         if isinstance(data, dict):
             server_list = data.get("data", data.get("list", []))
         elif isinstance(data, list):
             server_list = data
-            
+
         return [ProxyServer.from_dict(s) for s in server_list]
 
     def get_proxy_expiration(
@@ -899,7 +908,7 @@ class ThordataClient:
         params = {"token": self.public_token, "key": self.public_key}
         for k, v in kwargs.items():
             params[k] = str(v)
-        
+
         response = self._api_request_with_retry(
             "GET", f"{self._locations_base_url}/{endpoint}", params=params
         )

@@ -179,10 +179,10 @@ def build_user_agent(sdk_version: str, http_client: str) -> str:
     system = platform.system() or "unknown"
     release = platform.release() or "unknown"
     machine = platform.machine() or "unknown"
-    
+
     # Clean up strings to avoid UA parsing issues (remove newlines, etc)
     system = system.replace(";", "").strip()
-    
+
     return (
         f"thordata-python-sdk/{sdk_version} "
         f"python/{py_ver} "
