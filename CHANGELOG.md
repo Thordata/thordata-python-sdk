@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-01-06
+
+### Added
+- **Proxy Performance**: Implemented connection pooling using `urllib3.ProxyManager` for the Proxy Network client. This significantly reduces latency and TCP handshake overhead in high-concurrency scenarios.
+- **User-Agent Standard**: Updated User-Agent format to `thordata-python-sdk/{version} python/{ver} ({os}/{arch})` for better observability.
+- **Documentation**: Comprehensive rewrite of `README.md` with structured examples for all modules.
+
+### Fixed
+- **Type Hints**: Modernized type annotations to Python 3.9+ standards (removed `typing.Dict/List`).
+- **Async Safety**: Fixed nested `async with` context managers in `AsyncThordataClient`.
+- **Cleanup**: Removed unused imports and variables across the codebase.
+
 ## [1.0.1] - 2026-01-05
 
 ### Added
