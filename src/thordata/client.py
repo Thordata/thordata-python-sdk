@@ -28,7 +28,7 @@ import logging
 import os
 import ssl
 from datetime import date
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlencode
 
 import requests
@@ -123,8 +123,8 @@ class ThordataClient:
         self._proxy_session.trust_env = False
 
         # Cache for ProxyManagers (Connection Pooling Fix)
-        # Key: proxy_url (str), Value: urllib3.ProxyManager
-        self._proxy_managers: dict[str, urllib3.ProxyManager] = {}
+
+        self._proxy_managers: dict[str, urllib3.PoolManager] = {}
 
         self._api_session = requests.Session()
         self._api_session.trust_env = True
@@ -342,11 +342,12 @@ class ThordataClient:
         *,
         cache_key: str,
         proxy_headers: dict[str, str] | None = None,
-    ) -> urllib3.ProxyManager:
+    ) -> urllib3.PoolManager:
         """Get or create a ProxyManager for the given proxy URL (Pooled)."""
 
-        if cache_key in self._proxy_managers:
-            return self._proxy_managers[cache_key]
+        cached = self._proxy_managers.get(cache_key)
+        if cached is not None:
+            return cached
 
         # SOCKS proxies: must use SOCKSProxyManager and auth must be in proxy URL
         if proxy_url.startswith(("socks5://", "socks5h://", "socks4://", "socks4a://")):
@@ -358,11 +359,13 @@ class ThordataClient:
                     "Install: pip install 'urllib3[socks]' or pip install PySocks"
                 ) from e
 
-            pm = SOCKSProxyManager(
+            pm_socks = SOCKSProxyManager(
                 proxy_url,
                 num_pools=10,
                 maxsize=10,
             )
+
+            pm = cast(urllib3.PoolManager, pm_socks)
             self._proxy_managers[cache_key] = pm
             return pm
 
@@ -371,14 +374,15 @@ class ThordataClient:
         if proxy_url.startswith("https://"):
             proxy_ssl_context = ssl.create_default_context()
 
-        # IMPORTANT: proxy auth for CONNECT is best passed via ProxyManager init
-        pm = urllib3.ProxyManager(
+        pm_http = urllib3.ProxyManager(
             proxy_url,
             proxy_headers=proxy_headers,
             proxy_ssl_context=proxy_ssl_context,
             num_pools=10,
             maxsize=10,
         )
+
+        pm = cast(urllib3.PoolManager, pm_http)
         self._proxy_managers[cache_key] = pm
         return pm
 
