@@ -45,6 +45,7 @@ classifiers = [
 dependencies = [
     "requests>=2.25.0",
     "aiohttp>=3.9.0",
+    "PySocks>=1.7.1",
 ]
 
 [project.optional-dependencies]
@@ -83,6 +84,7 @@ include = '\.pyi?$'
 [tool.ruff]
 line-length = 88
 target-version = "py39"
+extend-exclude = ["sdk-spec"]
 
 [tool.ruff.lint]
 select = [

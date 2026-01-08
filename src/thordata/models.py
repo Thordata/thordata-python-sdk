@@ -30,6 +30,7 @@ import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
+from urllib.parse import quote
 
 # =============================================================================
 # Proxy Product Types
@@ -111,7 +112,7 @@ class ProxyConfig:
     product: ProxyProduct | str = ProxyProduct.RESIDENTIAL
     host: str | None = None
     port: int | None = None
-    protocol: str = "http"
+    protocol: str = "https"
 
     # Geo-targeting
     continent: str | None = None
@@ -153,9 +154,9 @@ class ProxyConfig:
     def _validate(self) -> None:
         """Validate the proxy configuration."""
         # Validate protocol
-        if self.protocol not in ("http", "https"):
+        if self.protocol not in ("http", "https", "socks5", "socks5h"):
             raise ValueError(
-                f"Invalid protocol: {self.protocol}. Must be 'http' or 'https'."
+                f"Invalid protocol: {self.protocol}. Must be 'http', 'https', 'socks5', or 'socks5h'."
             )
 
         # Validate session duration
@@ -225,17 +226,25 @@ class ProxyConfig:
         return "-".join(parts)
 
     def build_proxy_url(self) -> str:
-        """
-        Build the complete proxy URL.
-
-        Returns:
-            The formatted proxy URL for use with requests/aiohttp.
-        """
         username = self.build_username()
-        return f"{self.protocol}://{username}:{self.password}@{self.host}:{self.port}"
+
+        proto = self.protocol
+        if proto == "socks5":
+            proto = "socks5h"
+
+        # IMPORTANT: SOCKS URLs must URL-encode credentials, otherwise special chars
+        # like @ : / ? # will break parsing and often show up as timeouts.
+        if proto.startswith("socks"):
+            username_enc = quote(username, safe="")
+            password_enc = quote(self.password, safe="")
+            return f"{proto}://{username_enc}:{password_enc}@{self.host}:{self.port}"
+
+        return f"{proto}://{username}:{self.password}@{self.host}:{self.port}"
 
     def build_proxy_endpoint(self) -> str:
-        """Proxy endpoint without credentials, for HTTPS proxy managers."""
+        proto = self.protocol
+        if proto == "socks5":
+            proto = "socks5h"
         return f"{self.protocol}://{self.host}:{self.port}"
 
     def build_proxy_basic_auth(self) -> str:
@@ -288,7 +297,7 @@ class WhitelistProxyConfig:
 
     host: str = "pr.thordata.net"
     port: int = 9999
-    protocol: str = "http"  # use http for proxy scheme; target URL can still be https
+    protocol: str = "https"  # use http for proxy scheme; target URL can still be https
 
     def __post_init__(self) -> None:
         if self.protocol not in ("http", "https"):
@@ -335,13 +344,13 @@ class StaticISPProxy:
     username: str
     password: str
     port: int = 6666
-    protocol: str = "http"
+    protocol: str = "https"
 
     def __post_init__(self) -> None:
         """Validate configuration."""
-        if self.protocol not in ("http", "https"):
+        if self.protocol not in ("http", "https", "socks5", "socks5h"):
             raise ValueError(
-                f"Invalid protocol: {self.protocol}. Must be 'http' or 'https'."
+                f"Invalid protocol: {self.protocol}. Must be 'http', 'https', 'socks5', or 'socks5h'."
             )
 
     def build_proxy_url(self) -> str:
@@ -351,9 +360,16 @@ class StaticISPProxy:
         Returns:
             The formatted proxy URL.
         """
-        return (
-            f"{self.protocol}://{self.username}:{self.password}@{self.host}:{self.port}"
-        )
+        proto = self.protocol
+        if proto == "socks5":
+            proto = "socks5h"
+
+        if proto.startswith("socks"):
+            u = quote(self.username, safe="")
+            p = quote(self.password, safe="")
+            return f"{proto}://{u}:{p}@{self.host}:{self.port}"
+
+        return f"{proto}://{self.username}:{self.password}@{self.host}:{self.port}"
 
     def to_proxies_dict(self) -> dict[str, str]:
         """
@@ -1155,7 +1171,7 @@ class ProxyServer:
             region=data.get("region"),
         )
 
-    def to_proxy_url(self, protocol: str = "http") -> str:
+    def to_proxy_url(self, protocol: str = "https") -> str:
         """
         Build proxy URL for this server.
 

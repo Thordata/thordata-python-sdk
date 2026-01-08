@@ -23,6 +23,7 @@ Example:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import ssl
@@ -188,7 +189,7 @@ class ThordataClient:
         self._whitelist_url = f"{whitelist_base}/whitelisted-ips"
 
         proxy_api_base = os.getenv(
-            "THORDATA_PROXY_API_BASE_URL", "https://api.thordata.com/api"
+            "THORDATA_PROXY_API_BASE_URL", "https://openapi.thordata.com/api"
         )
         self._proxy_list_url = f"{proxy_api_base}/proxy/proxy-list"
         self._proxy_expiration_url = f"{proxy_api_base}/proxy/expiration-time"
@@ -323,21 +324,63 @@ class ThordataClient:
                 f"API request failed: {e}", original_error=e
             ) from e
 
-    def _get_proxy_manager(self, proxy_url: str) -> urllib3.ProxyManager:
-        """Get or create a ProxyManager for the given proxy URL (Pooled)."""
-        if proxy_url not in self._proxy_managers:
-            # Create a new manager if not cached
-            proxy_ssl_context = None
-            if proxy_url.startswith("https://"):
-                proxy_ssl_context = ssl.create_default_context()
+    def _proxy_manager_key(self, proxy_endpoint: str, userpass: str | None) -> str:
+        """
+        Build a stable cache key for ProxyManager instances.
 
-            self._proxy_managers[proxy_url] = urllib3.ProxyManager(
+        We must include auth identity in the key, otherwise a ProxyManager created
+        with one Proxy-Authorization header could be reused for another username/session.
+        """
+        if not userpass:
+            return proxy_endpoint
+        h = hashlib.sha256(userpass.encode("utf-8")).hexdigest()[:12]
+        return f"{proxy_endpoint}|auth={h}"
+
+    def _get_proxy_manager(
+        self,
+        proxy_url: str,
+        *,
+        cache_key: str,
+        proxy_headers: dict[str, str] | None = None,
+    ) -> urllib3.ProxyManager:
+        """Get or create a ProxyManager for the given proxy URL (Pooled)."""
+
+        if cache_key in self._proxy_managers:
+            return self._proxy_managers[cache_key]
+
+        # SOCKS proxies: must use SOCKSProxyManager and auth must be in proxy URL
+        if proxy_url.startswith(("socks5://", "socks5h://", "socks4://", "socks4a://")):
+            try:
+                from urllib3.contrib.socks import SOCKSProxyManager
+            except Exception as e:
+                raise ThordataConfigError(
+                    "SOCKS proxy requested but SOCKS dependencies are missing. "
+                    "Install: pip install 'urllib3[socks]' or pip install PySocks"
+                ) from e
+
+            pm = SOCKSProxyManager(
                 proxy_url,
-                proxy_ssl_context=proxy_ssl_context,
-                num_pools=10,  # Allow concurrency
+                num_pools=10,
                 maxsize=10,
             )
-        return self._proxy_managers[proxy_url]
+            self._proxy_managers[cache_key] = pm
+            return pm
+
+        # HTTP/HTTPS proxies
+        proxy_ssl_context = None
+        if proxy_url.startswith("https://"):
+            proxy_ssl_context = ssl.create_default_context()
+
+        # IMPORTANT: proxy auth for CONNECT is best passed via ProxyManager init
+        pm = urllib3.ProxyManager(
+            proxy_url,
+            proxy_headers=proxy_headers,
+            proxy_ssl_context=proxy_ssl_context,
+            num_pools=10,
+            maxsize=10,
+        )
+        self._proxy_managers[cache_key] = pm
+        return pm
 
     def _proxy_request_with_proxy_manager(
         self,
@@ -355,16 +398,41 @@ class ThordataClient:
         prepped = self._proxy_session.prepare_request(req)
         final_url = prepped.url or url
 
-        # 2. Get Proxy Configuration
-        proxy_url = proxy_config.build_proxy_endpoint()
-        proxy_headers = urllib3.make_headers(
-            proxy_basic_auth=proxy_config.build_proxy_basic_auth()
+        # 2. Resolve proxy endpoint + auth
+        proxy_endpoint = (
+            proxy_config.build_proxy_endpoint()
+        )  # e.g. https://host:port OR socks5h://host:port
+        is_socks = proxy_endpoint.startswith(
+            ("socks5://", "socks5h://", "socks4://", "socks4a://")
         )
 
-        # 3. Get Cached Proxy Manager
-        pm = self._get_proxy_manager(proxy_url)
+        # 3. Build ProxyManager (cached)
+        if is_socks:
+            # SOCKS auth MUST be in proxy URL
+            proxy_url_for_manager = (
+                proxy_config.build_proxy_url()
+            )  # socks5h://user:pass@host:port
+            userpass = proxy_config.build_proxy_basic_auth()
+            cache_key = self._proxy_manager_key(proxy_endpoint, userpass)
 
-        # 4. Prepare Request Headers/Body
+            pm = self._get_proxy_manager(
+                proxy_url_for_manager,
+                cache_key=cache_key,
+                proxy_headers=None,
+            )
+        else:
+            # HTTP/HTTPS proxy: auth should be provided via proxy_headers at manager init
+            userpass = proxy_config.build_proxy_basic_auth()
+            proxy_headers = urllib3.make_headers(proxy_basic_auth=userpass)
+            cache_key = self._proxy_manager_key(proxy_endpoint, userpass)
+
+            pm = self._get_proxy_manager(
+                proxy_endpoint,
+                cache_key=cache_key,
+                proxy_headers=dict(proxy_headers),
+            )
+
+        # 4. Prepare request headers/body
         req_headers = dict(headers or {})
         body = None
         if data is not None:
@@ -376,15 +444,14 @@ class ThordataClient:
             else:
                 body = data
 
-        # 5. Execute Request via urllib3
+        # 5. Execute request via urllib3
         http_resp = pm.request(
             method.upper(),
             final_url,
             body=body,
             headers=req_headers or None,
-            proxy_headers=proxy_headers,  # Attach Auth here
             timeout=urllib3.Timeout(connect=timeout, read=timeout),
-            retries=False,  # We handle retries in _proxy_verb
+            retries=False,  # retries handled outside
             preload_content=True,
         )
 
@@ -936,7 +1003,7 @@ class ThordataClient:
         protocol = (
             os.getenv(f"THORDATA_{prefix}_PROXY_PROTOCOL")
             or os.getenv("THORDATA_PROXY_PROTOCOL")
-            or "http"
+            or "https"
         )
         port = int(port_raw) if port_raw and port_raw.isdigit() else None
         return host or None, port, protocol
