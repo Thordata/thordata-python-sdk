@@ -1,0 +1,36 @@
+name: Integration (Live)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    if: github.repository_owner == 'Thordata'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -e ".[dev]"
+          # 确保安装了 SOCKS 支持
+          python -m pip install "urllib3[socks]" PySocks
+
+      - name: Run integration tests
+        env:
+          THORDATA_INTEGRATION: "true"
+          THORDATA_SCRAPER_TOKEN: ${{ secrets.THORDATA_SCRAPER_TOKEN }}
+          THORDATA_PUBLIC_TOKEN: ${{ secrets.THORDATA_PUBLIC_TOKEN }}
+          THORDATA_PUBLIC_KEY: ${{ secrets.THORDATA_PUBLIC_KEY }}
+          THORDATA_PROXY_HOST: ${{ secrets.THORDATA_PROXY_HOST }}
+          THORDATA_PROXY_PORT: ${{ secrets.THORDATA_PROXY_PORT }}
+          THORDATA_RESIDENTIAL_USERNAME: ${{ secrets.THORDATA_RESIDENTIAL_USERNAME }}
+          THORDATA_RESIDENTIAL_PASSWORD: ${{ secrets.THORDATA_RESIDENTIAL_PASSWORD }}
+        run: |
+          python -m pytest -m integration -v

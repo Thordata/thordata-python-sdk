@@ -125,6 +125,7 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "-v --cov=thordata --cov-report=term-missing"
+markers = ["integration: live tests that require real credentials"]
 
 # Coverage setup
 [tool.coverage.run]

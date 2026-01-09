@@ -23,16 +23,26 @@ Example:
 
 from __future__ import annotations
 
+import base64
+import contextlib
 import hashlib
 import logging
 import os
+import socket
 import ssl
 from datetime import date
 from typing import Any, cast
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import requests
 import urllib3
+
+try:
+    import socks
+
+    HAS_PYSOCKS = True
+except ImportError:
+    HAS_PYSOCKS = False
 
 from . import __version__ as _sdk_version
 from ._utils import (
@@ -68,6 +78,198 @@ from .retry import RetryConfig, with_retry
 logger = logging.getLogger(__name__)
 
 
+# =========================================================================
+# Upstream Proxy Support (for users behind firewall)
+# =========================================================================
+
+
+def _parse_upstream_proxy() -> dict[str, Any] | None:
+    """
+    Parse THORDATA_UPSTREAM_PROXY environment variable.
+
+    Supported formats:
+        - http://127.0.0.1:7897
+        - socks5://127.0.0.1:7897
+        - socks5://user:pass@127.0.0.1:7897
+
+    Returns:
+        Dict with proxy config or None if not set.
+    """
+    upstream_url = os.environ.get("THORDATA_UPSTREAM_PROXY", "").strip()
+    if not upstream_url:
+        return None
+
+    parsed = urlparse(upstream_url)
+    scheme = (parsed.scheme or "").lower()
+
+    if scheme not in ("http", "https", "socks5", "socks5h", "socks4"):
+        logger.warning(f"Unsupported upstream proxy scheme: {scheme}")
+        return None
+
+    return {
+        "scheme": scheme,
+        "host": parsed.hostname or "127.0.0.1",
+        "port": parsed.port or (1080 if scheme.startswith("socks") else 7897),
+        "username": parsed.username,
+        "password": parsed.password,
+    }
+
+
+class _UpstreamProxySocketFactory:
+    """
+    Socket factory that creates connections through an upstream proxy.
+    Used for proxy chaining when accessing Thordata from behind a firewall.
+    """
+
+    def __init__(self, upstream_config: dict[str, Any]):
+        self.config = upstream_config
+
+    def create_connection(
+        self,
+        address: tuple[str, int],
+        timeout: float | None = None,
+        source_address: tuple[str, int] | None = None,
+    ) -> socket.socket:
+        """Create a socket connection through the upstream proxy."""
+        scheme = self.config["scheme"]
+
+        if scheme.startswith("socks"):
+            return self._create_socks_connection(address, timeout)
+        else:
+            return self._create_http_tunnel(address, timeout)
+
+    def _create_socks_connection(
+        self,
+        address: tuple[str, int],
+        timeout: float | None = None,
+    ) -> socket.socket:
+        """Create connection through SOCKS proxy."""
+        if not HAS_PYSOCKS:
+            raise RuntimeError(
+                "PySocks is required for SOCKS upstream proxy. "
+                "Install with: pip install PySocks"
+            )
+
+        scheme = self.config["scheme"]
+        proxy_type = socks.SOCKS5 if "socks5" in scheme else socks.SOCKS4
+
+        sock = socks.socksocket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.set_proxy(
+            proxy_type,
+            self.config["host"],
+            self.config["port"],
+            rdns=True,
+            username=self.config.get("username"),
+            password=self.config.get("password"),
+        )
+
+        if timeout is not None:
+            sock.settimeout(timeout)
+
+        sock.connect(address)
+        return sock
+
+    def _create_http_tunnel(
+        self,
+        address: tuple[str, int],
+        timeout: float | None = None,
+    ) -> socket.socket:
+        """Create connection through HTTP CONNECT tunnel."""
+        # Connect to upstream proxy
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        if timeout is not None:
+            sock.settimeout(timeout)
+
+        sock.connect((self.config["host"], self.config["port"]))
+
+        # Build CONNECT request
+        target_host, target_port = address
+        connect_req = f"CONNECT {target_host}:{target_port} HTTP/1.1\r\n"
+        connect_req += f"Host: {target_host}:{target_port}\r\n"
+
+        # Add proxy auth if provided
+        if self.config.get("username"):
+            credentials = f"{self.config['username']}:{self.config.get('password', '')}"
+            encoded = base64.b64encode(credentials.encode()).decode()
+            connect_req += f"Proxy-Authorization: Basic {encoded}\r\n"
+
+        connect_req += "\r\n"
+
+        sock.sendall(connect_req.encode())
+
+        # Read response
+        response = b""
+        while b"\r\n\r\n" not in response:
+            chunk = sock.recv(1024)
+            if not chunk:
+                raise ConnectionError("Upstream proxy closed connection")
+            response += chunk
+
+        # Check status
+        status_line = response.split(b"\r\n")[0].decode()
+        if "200" not in status_line:
+            sock.close()
+            raise ConnectionError(f"Upstream proxy CONNECT failed: {status_line}")
+
+        return sock
+
+
+class _TLSInTLSSocket:
+    """
+    A socket-like wrapper for TLS-in-TLS connections.
+
+    Uses SSLObject + MemoryBIO to implement TLS over an existing TLS connection.
+    """
+
+    def __init__(
+        self,
+        outer_sock: ssl.SSLSocket,
+        ssl_obj: ssl.SSLObject,
+        incoming: ssl.MemoryBIO,
+        outgoing: ssl.MemoryBIO,
+    ):
+        self._outer = outer_sock
+        self._ssl = ssl_obj
+        self._incoming = incoming
+        self._outgoing = outgoing
+        self._timeout: float | None = None
+
+    def settimeout(self, timeout: float | None) -> None:
+        self._timeout = timeout
+        self._outer.settimeout(timeout)
+
+    def sendall(self, data: bytes) -> None:
+        """Send data through the inner TLS connection."""
+        self._ssl.write(data)
+        encrypted = self._outgoing.read()
+        if encrypted:
+            self._outer.sendall(encrypted)
+
+    def recv(self, bufsize: int) -> bytes:
+        """Receive data from the inner TLS connection."""
+        while True:
+            try:
+                return self._ssl.read(bufsize)
+            except ssl.SSLWantReadError:
+                self._outer.settimeout(self._timeout)
+                try:
+                    received = self._outer.recv(8192)
+                    if not received:
+                        return b""
+                    self._incoming.write(received)
+                except socket.timeout:
+                    return b""
+
+    def close(self) -> None:
+        with contextlib.suppress(Exception):
+            self._outer.close()
+
+
+# =========================================================================
+# Main Client Class
+# =========================================================================
+
+
 class ThordataClient:
     # API Endpoints
     BASE_URL = "https://scraperapi.thordata.com"
@@ -95,35 +297,24 @@ class ThordataClient:
         if not scraper_token:
             raise ThordataConfigError("scraper_token is required")
 
-        # Core credentials
         self.scraper_token = scraper_token
         self.public_token = public_token
         self.public_key = public_key
 
-        # Proxy configuration
         self._proxy_host = proxy_host
         self._proxy_port = proxy_port
-
-        # Timeout configuration
         self._default_timeout = timeout
         self._api_timeout = api_timeout
-
-        # Retry configuration
         self._retry_config = retry_config or RetryConfig()
 
-        # Authentication mode (for scraping APIs)
         self._auth_mode = auth_mode.lower()
         if self._auth_mode not in ("bearer", "header_token"):
             raise ThordataConfigError(
                 f"Invalid auth_mode: {auth_mode}. Must be 'bearer' or 'header_token'."
             )
 
-        # HTTP Sessions
         self._proxy_session = requests.Session()
         self._proxy_session.trust_env = False
-
-        # Cache for ProxyManagers (Connection Pooling Fix)
-
         self._proxy_managers: dict[str, urllib3.PoolManager] = {}
 
         self._api_session = requests.Session()
@@ -197,6 +388,7 @@ class ThordataClient:
     # =========================================================================
     # Proxy Network Methods
     # =========================================================================
+
     def get(
         self,
         url: str,
@@ -238,9 +430,6 @@ class ThordataClient:
                 "Pass proxy_config or set THORDATA_RESIDENTIAL_USERNAME/PASSWORD env vars."
             )
 
-        # For requests/urllib3, we don't need 'proxies' dict in kwargs
-        # because we use ProxyManager directly.
-        # But we remove it if user accidentally passed it to avoid confusion.
         kwargs.pop("proxies", None)
 
         @with_retry(self._retry_config)
@@ -293,6 +482,7 @@ class ThordataClient:
     # =========================================================================
     # Internal Request Helpers
     # =========================================================================
+
     def _api_request_with_retry(
         self,
         method: str,
@@ -325,12 +515,7 @@ class ThordataClient:
             ) from e
 
     def _proxy_manager_key(self, proxy_endpoint: str, userpass: str | None) -> str:
-        """
-        Build a stable cache key for ProxyManager instances.
-
-        We must include auth identity in the key, otherwise a ProxyManager created
-        with one Proxy-Authorization header could be reused for another username/session.
-        """
+        """Build a stable cache key for ProxyManager instances."""
         if not userpass:
             return proxy_endpoint
         h = hashlib.sha256(userpass.encode("utf-8")).hexdigest()[:12]
@@ -344,12 +529,10 @@ class ThordataClient:
         proxy_headers: dict[str, str] | None = None,
     ) -> urllib3.PoolManager:
         """Get or create a ProxyManager for the given proxy URL (Pooled)."""
-
         cached = self._proxy_managers.get(cache_key)
         if cached is not None:
             return cached
 
-        # SOCKS proxies: must use SOCKSProxyManager and auth must be in proxy URL
         if proxy_url.startswith(("socks5://", "socks5h://", "socks4://", "socks4a://")):
             try:
                 from urllib3.contrib.socks import SOCKSProxyManager
@@ -364,7 +547,6 @@ class ThordataClient:
                 num_pools=10,
                 maxsize=10,
             )
-
             pm = cast(urllib3.PoolManager, pm_socks)
             self._proxy_managers[cache_key] = pm
             return pm
@@ -397,25 +579,35 @@ class ThordataClient:
         params: dict[str, Any] | None = None,
         data: Any = None,
     ) -> requests.Response:
-        # 1. Prepare URL and Body
+        """Execute request through proxy, with optional upstream proxy support."""
+
+        # Check for upstream proxy
+        upstream_config = _parse_upstream_proxy()
+
+        if upstream_config:
+            return self._proxy_request_with_upstream(
+                method,
+                url,
+                proxy_config=proxy_config,
+                timeout=timeout,
+                headers=headers,
+                params=params,
+                data=data,
+                upstream_config=upstream_config,
+            )
+
+        # Original implementation (no upstream proxy)
         req = requests.Request(method=method.upper(), url=url, params=params)
         prepped = self._proxy_session.prepare_request(req)
         final_url = prepped.url or url
 
-        # 2. Resolve proxy endpoint + auth
-        proxy_endpoint = (
-            proxy_config.build_proxy_endpoint()
-        )  # e.g. https://host:port OR socks5h://host:port
+        proxy_endpoint = proxy_config.build_proxy_endpoint()
         is_socks = proxy_endpoint.startswith(
             ("socks5://", "socks5h://", "socks4://", "socks4a://")
         )
 
-        # 3. Build ProxyManager (cached)
         if is_socks:
-            # SOCKS auth MUST be in proxy URL
-            proxy_url_for_manager = (
-                proxy_config.build_proxy_url()
-            )  # socks5h://user:pass@host:port
+            proxy_url_for_manager = proxy_config.build_proxy_url()
             userpass = proxy_config.build_proxy_basic_auth()
             cache_key = self._proxy_manager_key(proxy_endpoint, userpass)
 
@@ -425,7 +617,6 @@ class ThordataClient:
                 proxy_headers=None,
             )
         else:
-            # HTTP/HTTPS proxy: auth should be provided via proxy_headers at manager init
             userpass = proxy_config.build_proxy_basic_auth()
             proxy_headers = urllib3.make_headers(proxy_basic_auth=userpass)
             cache_key = self._proxy_manager_key(proxy_endpoint, userpass)
@@ -436,7 +627,6 @@ class ThordataClient:
                 proxy_headers=dict(proxy_headers),
             )
 
-        # 4. Prepare request headers/body
         req_headers = dict(headers or {})
         body = None
         if data is not None:
@@ -448,18 +638,16 @@ class ThordataClient:
             else:
                 body = data
 
-        # 5. Execute request via urllib3
         http_resp = pm.request(
             method.upper(),
             final_url,
             body=body,
             headers=req_headers or None,
             timeout=urllib3.Timeout(connect=timeout, read=timeout),
-            retries=False,  # retries handled outside
+            retries=False,
             preload_content=True,
         )
 
-        # 6. Convert back to requests.Response
         r = requests.Response()
         r.status_code = int(getattr(http_resp, "status", 0) or 0)
         r._content = http_resp.data or b""
@@ -470,8 +658,400 @@ class ThordataClient:
         return r
 
     # =========================================================================
+    # Upstream Proxy Support (Proxy Chaining)
+    # =========================================================================
+
+    def _proxy_request_with_upstream(
+        self,
+        method: str,
+        url: str,
+        *,
+        proxy_config: ProxyConfig,
+        timeout: int,
+        headers: dict[str, str] | None = None,
+        params: dict[str, Any] | None = None,
+        data: Any = None,
+        upstream_config: dict[str, Any],
+    ) -> requests.Response:
+        """Execute request through proxy chain: Upstream -> Thordata -> Target."""
+        if not HAS_PYSOCKS:
+            raise ThordataConfigError(
+                "PySocks is required for upstream proxy support. "
+                "Install with: pip install PySocks"
+            )
+
+        req = requests.Request(method=method.upper(), url=url, params=params)
+        prepped = self._proxy_session.prepare_request(req)
+        final_url = prepped.url or url
+
+        parsed_target = urlparse(final_url)
+        target_host = parsed_target.hostname
+        target_port = parsed_target.port or (
+            443 if parsed_target.scheme == "https" else 80
+        )
+        target_is_https = parsed_target.scheme == "https"
+
+        protocol = proxy_config.protocol.lower()
+        if protocol == "socks5":
+            protocol = "socks5h"
+
+        thordata_host = proxy_config.host
+        thordata_port = proxy_config.port or 9999
+        thordata_username = proxy_config.build_username()
+        thordata_password = proxy_config.password
+
+        socket_factory = _UpstreamProxySocketFactory(upstream_config)
+
+        logger.debug(
+            f"Proxy chain: upstream({upstream_config['host']}:{upstream_config['port']}) "
+            f"-> thordata({protocol}://{thordata_host}:{thordata_port}) "
+            f"-> target({target_host}:{target_port})"
+        )
+
+        raw_sock = socket_factory.create_connection(
+            (thordata_host, thordata_port),
+            timeout=float(timeout),
+        )
+
+        try:
+            if protocol.startswith("socks"):
+                sock = self._socks5_handshake(
+                    raw_sock,
+                    target_host,
+                    target_port,
+                    thordata_username,
+                    thordata_password,
+                )
+                if target_is_https:
+                    context = ssl.create_default_context()
+                    sock = context.wrap_socket(sock, server_hostname=target_host)
+
+            elif protocol == "https":
+                proxy_context = ssl.create_default_context()
+                proxy_ssl_sock = proxy_context.wrap_socket(
+                    raw_sock, server_hostname=thordata_host
+                )
+
+                self._send_connect_request(
+                    proxy_ssl_sock,
+                    target_host,
+                    target_port,
+                    thordata_username,
+                    thordata_password,
+                )
+
+                if target_is_https:
+                    sock = self._create_tls_in_tls_socket(
+                        proxy_ssl_sock, target_host, timeout
+                    )  # type: ignore[assignment]
+                else:
+                    sock = proxy_ssl_sock
+
+            else:  # HTTP proxy
+                self._send_connect_request(
+                    raw_sock,
+                    target_host,
+                    target_port,
+                    thordata_username,
+                    thordata_password,
+                )
+
+                if target_is_https:
+                    context = ssl.create_default_context()
+                    sock = context.wrap_socket(raw_sock, server_hostname=target_host)
+                else:
+                    sock = raw_sock
+
+            return self._send_http_request(
+                sock, method, parsed_target, headers, data, final_url, timeout
+            )
+
+        finally:
+            with contextlib.suppress(Exception):
+                raw_sock.close()
+
+    def _send_connect_request(
+        self,
+        sock: socket.socket,
+        target_host: str,
+        target_port: int,
+        proxy_username: str,
+        proxy_password: str,
+    ) -> None:
+        """Send HTTP CONNECT request to proxy and verify response."""
+        connect_req = f"CONNECT {target_host}:{target_port} HTTP/1.1\r\n"
+        connect_req += f"Host: {target_host}:{target_port}\r\n"
+
+        credentials = f"{proxy_username}:{proxy_password}"
+        encoded = base64.b64encode(credentials.encode()).decode()
+        connect_req += f"Proxy-Authorization: Basic {encoded}\r\n"
+        connect_req += "\r\n"
+
+        sock.sendall(connect_req.encode())
+
+        response = b""
+        while b"\r\n\r\n" not in response:
+            chunk = sock.recv(4096)
+            if not chunk:
+                raise ConnectionError("Proxy closed connection during CONNECT")
+            response += chunk
+
+        status_line = response.split(b"\r\n")[0].decode()
+        if "200" not in status_line:
+            raise ConnectionError(f"Proxy CONNECT failed: {status_line}")
+
+    def _create_tls_in_tls_socket(
+        self,
+        outer_ssl_sock: ssl.SSLSocket,
+        hostname: str,
+        timeout: int,
+    ) -> _TLSInTLSSocket:
+        """Create a TLS connection over an existing TLS connection."""
+        context = ssl.create_default_context()
+
+        incoming = ssl.MemoryBIO()
+        outgoing = ssl.MemoryBIO()
+
+        ssl_obj = context.wrap_bio(incoming, outgoing, server_hostname=hostname)
+
+        while True:
+            try:
+                ssl_obj.do_handshake()
+                break
+            except ssl.SSLWantReadError:
+                data_to_send = outgoing.read()
+                if data_to_send:
+                    outer_ssl_sock.sendall(data_to_send)
+
+                outer_ssl_sock.settimeout(float(timeout))
+                try:
+                    received = outer_ssl_sock.recv(8192)
+                    if not received:
+                        raise ConnectionError("Connection closed during TLS handshake")
+                    incoming.write(received)
+                except socket.timeout as e:
+                    raise ConnectionError("Timeout during TLS handshake") from e
+            except ssl.SSLWantWriteError:
+                data_to_send = outgoing.read()
+                if data_to_send:
+                    outer_ssl_sock.sendall(data_to_send)
+
+        data_to_send = outgoing.read()
+        if data_to_send:
+            outer_ssl_sock.sendall(data_to_send)
+
+        return _TLSInTLSSocket(outer_ssl_sock, ssl_obj, incoming, outgoing)
+
+    def _send_http_request(
+        self,
+        sock: socket.socket,
+        method: str,
+        parsed_url: Any,
+        headers: dict[str, str] | None,
+        data: Any,
+        final_url: str,
+        timeout: int,
+    ) -> requests.Response:
+        """Send HTTP request over established connection and parse response."""
+        target_host = parsed_url.hostname
+
+        req_headers = dict(headers or {})
+        req_headers.setdefault("Host", target_host)
+        req_headers.setdefault("User-Agent", build_user_agent(_sdk_version, "requests"))
+        req_headers.setdefault("Connection", "close")
+
+        path = parsed_url.path or "/"
+        if parsed_url.query:
+            path += f"?{parsed_url.query}"
+
+        http_req = f"{method.upper()} {path} HTTP/1.1\r\n"
+        for k, v in req_headers.items():
+            http_req += f"{k}: {v}\r\n"
+
+        body = None
+        if data is not None:
+            if isinstance(data, dict):
+                body = urlencode({k: str(v) for k, v in data.items()}).encode()
+                http_req += "Content-Type: application/x-www-form-urlencoded\r\n"
+                http_req += f"Content-Length: {len(body)}\r\n"
+            elif isinstance(data, bytes):
+                body = data
+                http_req += f"Content-Length: {len(body)}\r\n"
+            else:
+                body = str(data).encode()
+                http_req += f"Content-Length: {len(body)}\r\n"
+
+        http_req += "\r\n"
+        sock.sendall(http_req.encode())
+
+        if body:
+            sock.sendall(body)
+
+        if hasattr(sock, "settimeout"):
+            sock.settimeout(float(timeout))
+
+        response_data = b""
+        try:
+            while True:
+                chunk = sock.recv(8192)
+                if not chunk:
+                    break
+                response_data += chunk
+                if b"\r\n\r\n" in response_data:
+                    header_end = response_data.index(b"\r\n\r\n") + 4
+                    headers_part = (
+                        response_data[:header_end]
+                        .decode("utf-8", errors="replace")
+                        .lower()
+                    )
+                    if "content-length:" in headers_part:
+                        for line in headers_part.split("\r\n"):
+                            if line.startswith("content-length:"):
+                                content_length = int(line.split(":")[1].strip())
+                                if len(response_data) >= header_end + content_length:
+                                    break
+                    elif "transfer-encoding: chunked" not in headers_part:
+                        break
+        except socket.timeout:
+            pass
+
+        return self._parse_http_response(response_data, final_url)
+
+    def _socks5_handshake(
+        self,
+        sock: socket.socket,
+        target_host: str,
+        target_port: int,
+        username: str | None,
+        password: str | None,
+    ) -> socket.socket:
+        """Perform SOCKS5 handshake over existing socket."""
+        if username and password:
+            sock.sendall(b"\x05\x02\x00\x02")
+        else:
+            sock.sendall(b"\x05\x01\x00")
+
+        response = sock.recv(2)
+        if len(response) < 2:
+            raise ConnectionError("SOCKS5 handshake failed: incomplete response")
+
+        if response[0] != 0x05:
+            raise ConnectionError(f"SOCKS5 version mismatch: {response[0]}")
+
+        auth_method = response[1]
+
+        if auth_method == 0x02:
+            if not username or not password:
+                raise ConnectionError(
+                    "SOCKS5 server requires auth but no credentials provided"
+                )
+
+            auth_req = bytes([0x01, len(username)]) + username.encode()
+            auth_req += bytes([len(password)]) + password.encode()
+            sock.sendall(auth_req)
+
+            auth_resp = sock.recv(2)
+            if len(auth_resp) < 2 or auth_resp[1] != 0x00:
+                raise ConnectionError("SOCKS5 authentication failed")
+
+        elif auth_method == 0xFF:
+            raise ConnectionError("SOCKS5 no acceptable auth method")
+
+        connect_req = b"\x05\x01\x00\x03"
+        connect_req += bytes([len(target_host)]) + target_host.encode()
+        connect_req += target_port.to_bytes(2, "big")
+        sock.sendall(connect_req)
+
+        resp = sock.recv(4)
+        if len(resp) < 4:
+            raise ConnectionError("SOCKS5 connect failed: incomplete response")
+
+        if resp[1] != 0x00:
+            error_codes = {
+                0x01: "General failure",
+                0x02: "Connection not allowed",
+                0x03: "Network unreachable",
+                0x04: "Host unreachable",
+                0x05: "Connection refused",
+                0x06: "TTL expired",
+                0x07: "Command not supported",
+                0x08: "Address type not supported",
+            }
+            error_msg = error_codes.get(resp[1], f"Unknown error {resp[1]}")
+            raise ConnectionError(f"SOCKS5 connect failed: {error_msg}")
+
+        addr_type = resp[3]
+        if addr_type == 0x01:
+            sock.recv(4 + 2)
+        elif addr_type == 0x03:
+            domain_len = sock.recv(1)[0]
+            sock.recv(domain_len + 2)
+        elif addr_type == 0x04:
+            sock.recv(16 + 2)
+
+        return sock
+
+    def _parse_http_response(
+        self,
+        response_data: bytes,
+        url: str,
+    ) -> requests.Response:
+        """Parse raw HTTP response into requests.Response."""
+        if b"\r\n\r\n" in response_data:
+            header_data, body = response_data.split(b"\r\n\r\n", 1)
+        else:
+            header_data = response_data
+            body = b""
+
+        header_lines = header_data.decode("utf-8", errors="replace").split("\r\n")
+
+        status_line = header_lines[0] if header_lines else ""
+        parts = status_line.split(" ", 2)
+        status_code = int(parts[1]) if len(parts) > 1 else 0
+
+        headers_dict = {}
+        for line in header_lines[1:]:
+            if ": " in line:
+                k, v = line.split(": ", 1)
+                headers_dict[k] = v
+
+        if headers_dict.get("Transfer-Encoding", "").lower() == "chunked":
+            body = self._decode_chunked(body)
+
+        r = requests.Response()
+        r.status_code = status_code
+        r._content = body
+        r.url = url
+        r.headers = requests.structures.CaseInsensitiveDict(headers_dict)
+        return r
+
+    def _decode_chunked(self, data: bytes) -> bytes:
+        """Decode chunked transfer encoding."""
+        result = b""
+        while data:
+            if b"\r\n" not in data:
+                break
+            size_line, data = data.split(b"\r\n", 1)
+            try:
+                chunk_size = int(size_line.decode().strip(), 16)
+            except ValueError:
+                break
+
+            if chunk_size == 0:
+                break
+
+            result += data[:chunk_size]
+            data = data[chunk_size:]
+
+            if data.startswith(b"\r\n"):
+                data = data[2:]
+
+        return result
+
+    # =========================================================================
     # SERP API Methods
     # =========================================================================
+
     def serp_search(
         self,
         query: str,
@@ -539,6 +1119,7 @@ class ThordataClient:
     # =========================================================================
     # Universal Scraping API
     # =========================================================================
+
     def universal_scrape(
         self,
         url: str,
@@ -612,6 +1193,7 @@ class ThordataClient:
     # =========================================================================
     # Web Scraper API (Tasks)
     # =========================================================================
+
     def create_scraper_task(
         self,
         file_name: str,
@@ -787,6 +1369,7 @@ class ThordataClient:
     # =========================================================================
     # Account / Locations / Utils
     # =========================================================================
+
     def get_usage_statistics(
         self,
         from_date: str | date,
@@ -1036,7 +1619,6 @@ class ThordataClient:
     def close(self) -> None:
         self._proxy_session.close()
         self._api_session.close()
-        # Clean up connection pools
         for pm in self._proxy_managers.values():
             pm.clear()
         self._proxy_managers.clear()

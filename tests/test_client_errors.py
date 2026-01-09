@@ -2,7 +2,7 @@
 Tests for ThordataClient error handling.
 """
 
-from typing import Any
+from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
@@ -26,7 +26,9 @@ class DummyResponse:
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
-            raise requests.HTTPError(response=self)
+            # MyPy fix: explicitly cast 'self' to 'requests.Response'
+            # because 'requests.HTTPError' expects an Optional[Response]
+            raise requests.HTTPError(response=cast(requests.Response, self))
 
     def json(self) -> dict[str, Any]:
         return self._json_data
