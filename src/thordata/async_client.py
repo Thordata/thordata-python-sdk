@@ -60,6 +60,7 @@ from .models import (
     VideoTaskConfig,
 )
 from .retry import RetryConfig
+from .serp_engines import AsyncSerpNamespace
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,10 @@ class AsyncThordataClient:
         ...     public_token="pub_token",
         ...     public_key="pub_key"
         ... ) as client:
+        ...     # Old style
         ...     results = await client.serp_search("python")
+        ...     # New style (Namespaced)
+        ...     maps_results = await client.serp.google.maps("coffee", "@40.7,-74.0,14z")
     """
 
     # API Endpoints (same as sync client)
@@ -195,13 +199,16 @@ class AsyncThordataClient:
         self._whitelist_url = f"{whitelist_base}/whitelisted-ips"
 
         proxy_api_base = os.getenv(
-            "THORDATA_PROXY_API_BASE_URL", "https://api.thordata.com/api"
+            "THORDATA_PROXY_API_BASE_URL", "https://openapi.thordata.com/api"
         )
         self._proxy_list_url = f"{proxy_api_base}/proxy/proxy-list"
         self._proxy_expiration_url = f"{proxy_api_base}/proxy/expiration-time"
 
         # Session initialized lazily
         self._session: aiohttp.ClientSession | None = None
+
+        # Namespaced Access (e.g. client.serp.google.maps(...))
+        self.serp = AsyncSerpNamespace(self)
 
     async def __aenter__(self) -> AsyncThordataClient:
         """Async context manager entry."""
