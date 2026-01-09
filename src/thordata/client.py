@@ -37,6 +37,8 @@ from urllib.parse import urlencode, urlparse
 import requests
 import urllib3
 
+from .serp_engines import SerpNamespace
+
 try:
     import socks
 
@@ -296,6 +298,8 @@ class ThordataClient:
         """Initialize the Thordata Client."""
         if not scraper_token:
             raise ThordataConfigError("scraper_token is required")
+
+        self.serp = SerpNamespace(self)
 
         self.scraper_token = scraper_token
         self.public_token = public_token
