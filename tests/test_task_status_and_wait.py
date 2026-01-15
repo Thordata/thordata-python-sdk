@@ -1,11 +1,7 @@
 import pytest
 from pytest_httpserver import HTTPServer
 
-from thordata import (
-    AsyncThordataClient,
-    ThordataAuthError,
-    ThordataClient,
-)
+from thordata import AsyncThordataClient, ThordataAuthError, ThordataClient
 
 
 def test_wait_for_task_timeout_uses_monotonic(monkeypatch) -> None:

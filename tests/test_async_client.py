@@ -79,3 +79,17 @@ async def test_async_http_error_handling():
             )
 
         assert "Proxy Network requires an HTTPS proxy endpoint" in str(exc.value)
+
+
+async def test_async_missing_scraper_token():
+    """Test that missing scraper_token allows init but fails on API call."""
+    # 1. Init should succeed
+    client = AsyncThordataClient(scraper_token="")
+
+    # 2. Use async context manager to init session
+    async with client:
+        # 3. Method call should fail
+        with pytest.raises(
+            ThordataConfigError, match="scraper_token is required for SERP API"
+        ):
+            await client.serp_search("test")

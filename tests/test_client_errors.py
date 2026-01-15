@@ -8,11 +8,7 @@ from unittest.mock import patch
 import pytest
 import requests
 
-from thordata import (
-    ThordataAuthError,
-    ThordataClient,
-    ThordataRateLimitError,
-)
+from thordata import ThordataAuthError, ThordataClient, ThordataRateLimitError
 
 
 class DummyResponse:

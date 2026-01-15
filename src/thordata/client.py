@@ -36,6 +36,7 @@ from urllib.parse import urlencode, urlparse
 
 import requests
 import urllib3
+from requests.structures import CaseInsensitiveDict
 
 from .serp_engines import SerpNamespace
 
@@ -281,7 +282,7 @@ class ThordataClient:
 
     def __init__(
         self,
-        scraper_token: str,
+        scraper_token: str | None = None,  # Change: Optional
         public_token: str | None = None,
         public_key: str | None = None,
         proxy_host: str = "pr.thordata.net",
@@ -296,8 +297,6 @@ class ThordataClient:
         locations_base_url: str | None = None,
     ) -> None:
         """Initialize the Thordata Client."""
-        if not scraper_token:
-            raise ThordataConfigError("scraper_token is required")
 
         self.serp = SerpNamespace(self)
 
@@ -656,9 +655,7 @@ class ThordataClient:
         r.status_code = int(getattr(http_resp, "status", 0) or 0)
         r._content = http_resp.data or b""
         r.url = final_url
-        r.headers = requests.structures.CaseInsensitiveDict(
-            dict(http_resp.headers or {})
-        )
+        r.headers = CaseInsensitiveDict(dict(http_resp.headers or {}))
         return r
 
     # =========================================================================
@@ -689,7 +686,7 @@ class ThordataClient:
         final_url = prepped.url or url
 
         parsed_target = urlparse(final_url)
-        target_host = parsed_target.hostname
+        target_host = parsed_target.hostname or ""
         target_port = parsed_target.port or (
             443 if parsed_target.scheme == "https" else 80
         )
@@ -699,7 +696,7 @@ class ThordataClient:
         if protocol == "socks5":
             protocol = "socks5h"
 
-        thordata_host = proxy_config.host
+        thordata_host = proxy_config.host or ""
         thordata_port = proxy_config.port or 9999
         thordata_username = proxy_config.build_username()
         thordata_password = proxy_config.password
@@ -848,7 +845,7 @@ class ThordataClient:
 
     def _send_http_request(
         self,
-        sock: socket.socket,
+        sock: socket.socket | ssl.SSLSocket | Any,
         method: str,
         parsed_url: Any,
         headers: dict[str, str] | None,
@@ -1026,7 +1023,7 @@ class ThordataClient:
         r.status_code = status_code
         r._content = body
         r.url = url
-        r.headers = requests.structures.CaseInsensitiveDict(headers_dict)
+        r.headers = CaseInsensitiveDict(headers_dict)
         return r
 
     def _decode_chunked(self, data: bytes) -> bytes:
@@ -1090,6 +1087,9 @@ class ThordataClient:
         return self.serp_search_advanced(request)
 
     def serp_search_advanced(self, request: SerpRequest) -> dict[str, Any]:
+        if not self.scraper_token:
+            raise ThordataConfigError("scraper_token is required for SERP API")
+
         payload = request.to_payload()
         headers = build_auth_headers(self.scraper_token, mode=self._auth_mode)
 
@@ -1149,6 +1149,9 @@ class ThordataClient:
         return self.universal_scrape_advanced(request)
 
     def universal_scrape_advanced(self, request: UniversalScrapeRequest) -> str | bytes:
+        if not self.scraper_token:
+            raise ThordataConfigError("scraper_token is required for Universal API")
+
         payload = request.to_payload()
         headers = build_auth_headers(self.scraper_token, mode=self._auth_mode)
 
@@ -1217,6 +1220,8 @@ class ThordataClient:
 
     def create_scraper_task_advanced(self, config: ScraperTaskConfig) -> str:
         self._require_public_credentials()
+        if not self.scraper_token:
+            raise ThordataConfigError("scraper_token is required for Task Builder")
         payload = config.to_payload()
         headers = build_builder_headers(
             self.scraper_token, self.public_token or "", self.public_key or ""
@@ -1257,6 +1262,11 @@ class ThordataClient:
 
     def create_video_task_advanced(self, config: VideoTaskConfig) -> str:
         self._require_public_credentials()
+        if not self.scraper_token:
+            raise ThordataConfigError(
+                "scraper_token is required for Video Task Builder"
+            )
+
         payload = config.to_payload()
         headers = build_builder_headers(
             self.scraper_token, self.public_token or "", self.public_key or ""

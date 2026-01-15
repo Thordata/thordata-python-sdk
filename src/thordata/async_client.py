@@ -100,7 +100,7 @@ class AsyncThordataClient:
 
     def __init__(
         self,
-        scraper_token: str,
+        scraper_token: str | None = None,  # Change: Optional
         public_token: str | None = None,
         public_key: str | None = None,
         proxy_host: str = "pr.thordata.net",
@@ -115,8 +115,6 @@ class AsyncThordataClient:
         locations_base_url: str | None = None,
     ) -> None:
         """Initialize the Async Thordata Client."""
-        if not scraper_token:
-            raise ThordataConfigError("scraper_token is required")
 
         self.scraper_token = scraper_token
         self.public_token = public_token
@@ -393,6 +391,9 @@ class AsyncThordataClient:
         Returns:
             Parsed JSON results or dict with 'html' key.
         """
+        if not self.scraper_token:
+            raise ThordataConfigError("scraper_token is required for SERP API")
+
         session = self._get_session()
 
         engine_str = engine.value if isinstance(engine, Engine) else engine.lower()
@@ -412,7 +413,8 @@ class AsyncThordataClient:
         )
 
         payload = request.to_payload()
-        headers = build_auth_headers(self.scraper_token, mode=self._auth_mode)
+        token = self.scraper_token or ""
+        headers = build_auth_headers(token, mode=self._auth_mode)
 
         logger.info(f"Async SERP Search: {engine_str} - {query}")
 
@@ -458,6 +460,8 @@ class AsyncThordataClient:
         Execute an async SERP search using a SerpRequest object.
         """
         session = self._get_session()
+        if not self.scraper_token:
+            raise ThordataConfigError("scraper_token is required for SERP API")
 
         payload = request.to_payload()
         headers = build_auth_headers(self.scraper_token, mode=self._auth_mode)
@@ -552,6 +556,8 @@ class AsyncThordataClient:
         Async scrape using a UniversalScrapeRequest object.
         """
         session = self._get_session()
+        if not self.scraper_token:
+            raise ThordataConfigError("scraper_token is required for Universal API")
 
         payload = request.to_payload()
         headers = build_auth_headers(self.scraper_token, mode=self._auth_mode)
@@ -628,6 +634,8 @@ class AsyncThordataClient:
         """
         self._require_public_credentials()
         session = self._get_session()
+        if not self.scraper_token:
+            raise ThordataConfigError("scraper_token is required for Task Builder")
 
         payload = config.to_payload()
         # Builder needs 3 headers: token, key, Authorization Bearer
@@ -689,6 +697,10 @@ class AsyncThordataClient:
 
         self._require_public_credentials()
         session = self._get_session()
+        if not self.scraper_token:
+            raise ThordataConfigError(
+                "scraper_token is required for Video Task Builder"
+            )
 
         payload = config.to_payload()
         headers = build_builder_headers(
@@ -1534,8 +1546,8 @@ class AsyncThordataClient:
         self._require_public_credentials()
 
         params = {
-            "token": self.public_token,
-            "key": self.public_key,
+            "token": self.public_token or "",
+            "key": self.public_key or "",
         }
 
         for key, value in kwargs.items():

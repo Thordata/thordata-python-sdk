@@ -34,8 +34,15 @@ class TestClientInitialization:
 
     def test_missing_scraper_token(self):
         """Test that missing scraper_token raises error."""
-        with pytest.raises(ThordataConfigError, match="scraper_token is required"):
-            ThordataClient(scraper_token="")
+        # 1. Init should succeed (Lazy validation)
+        client = ThordataClient(scraper_token="")
+        assert client is not None
+
+        # 2. Method call should fail
+        with pytest.raises(
+            ThordataConfigError, match="scraper_token is required for SERP API"
+        ):
+            client.serp_search("test")
 
     def test_context_manager(self):
         """Test client as context manager."""

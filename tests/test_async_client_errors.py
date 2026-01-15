@@ -7,11 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from thordata import (
-    AsyncThordataClient,
-    ThordataAuthError,
-    ThordataRateLimitError,
-)
+from thordata import AsyncThordataClient, ThordataAuthError, ThordataRateLimitError
 
 
 class DummyAsyncResponse:

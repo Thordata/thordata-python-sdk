@@ -32,11 +32,7 @@ try:
 except ImportError:
     pass
 
-from thordata import (
-    CommonSettings,
-    ProxyType,
-    ThordataClient,
-)
+from thordata import CommonSettings, ProxyType, ThordataClient
 
 
 def test_video_task(client: ThordataClient) -> bool:
