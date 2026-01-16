@@ -28,7 +28,7 @@ class DummyAsyncResponse:
     def raise_for_status(self) -> None:
         pass
 
-    async def json(self) -> dict[str, Any]:
+    async def json(self, **kwargs: Any) -> dict[str, Any]:
         return self._json_data
 
     async def read(self) -> bytes:
