@@ -1380,6 +1380,83 @@ class ThordataClient:
             time.sleep(poll_interval)
         raise TimeoutError(f"Task {task_id} timeout")
 
+    def run_task(
+        self,
+        file_name: str,
+        spider_id: str,
+        spider_name: str,
+        parameters: dict[str, Any],
+        universal_params: dict[str, Any] | None = None,
+        *,
+        max_wait: float = 600.0,
+        initial_poll_interval: float = 2.0,
+        max_poll_interval: float = 10.0,
+        include_errors: bool = True,
+    ) -> str:
+        """
+        High-level wrapper to Run a Web Scraper task and wait for the result download URL.
+
+        This method handles the entire lifecycle:
+        1. Create Task
+        2. Poll status (with exponential backoff)
+        3. Get download URL when ready
+
+        Args:
+            file_name: Name for the output file.
+            spider_id: Spider identifier from Dashboard.
+            spider_name: Spider name (target domain).
+            parameters: Spider-specific parameters.
+            universal_params: Global spider settings.
+            max_wait: Maximum seconds to wait for task completion (default 600).
+            initial_poll_interval: Starting poll interval in seconds.
+            max_poll_interval: Maximum poll interval cap.
+            include_errors: Whether to include error logs in the task result.
+
+        Returns:
+            str: The download URL for the task result (default JSON).
+
+        Raises:
+            ThordataTimeoutError: If task takes longer than max_wait.
+            ThordataAPIError: If task fails or is cancelled.
+        """
+        import time
+
+        # 1. Create Task
+        config = ScraperTaskConfig(
+            file_name=file_name,
+            spider_id=spider_id,
+            spider_name=spider_name,
+            parameters=parameters,
+            universal_params=universal_params,
+            include_errors=include_errors,
+        )
+        task_id = self.create_scraper_task_advanced(config)
+        logger.info(f"Task created successfully: {task_id}. Waiting for completion...")
+
+        # 2. Poll Status (Smart Backoff)
+        start_time = time.monotonic()
+        current_poll = initial_poll_interval
+
+        while (time.monotonic() - start_time) < max_wait:
+            status = self.get_task_status(task_id)
+            status_lower = status.lower()
+
+            if status_lower in {"ready", "success", "finished"}:
+                logger.info(f"Task {task_id} finished. Status: {status}")
+                # 3. Get Result
+                return self.get_task_result(task_id)
+
+            if status_lower in {"failed", "error", "cancelled"}:
+                raise ThordataNetworkError(
+                    f"Task {task_id} ended with failed status: {status}"
+                )
+
+            # Wait and increase interval (capped)
+            time.sleep(current_poll)
+            current_poll = min(current_poll * 1.5, max_poll_interval)
+
+        raise ThordataTimeoutError(f"Task {task_id} timed out after {max_wait} seconds")
+
     # =========================================================================
     # Account / Locations / Utils
     # =========================================================================

@@ -652,7 +652,7 @@ class AsyncThordataClient:
                 self._builder_url, data=payload, headers=headers
             ) as response:
                 response.raise_for_status()
-                data = await response.json()
+                data = await response.json(content_type=None)
 
                 code = data.get("code")
                 if code != 200:
@@ -763,7 +763,7 @@ class AsyncThordataClient:
                 self._status_url, data=payload, headers=headers
             ) as response:
                 response.raise_for_status()
-                data = await response.json()
+                data = await response.json(content_type=None)
 
                 if isinstance(data, dict):
                     code = data.get("code")
@@ -826,7 +826,7 @@ class AsyncThordataClient:
             async with session.post(
                 self._download_url, data=payload, headers=headers
             ) as response:
-                data = await response.json()
+                data = await response.json(content_type=None)
                 code = data.get("code")
 
                 if code == 200 and data.get("data"):
@@ -879,7 +879,7 @@ class AsyncThordataClient:
                 timeout=self._api_timeout,
             ) as response:
                 response.raise_for_status()
-                data = await response.json()
+                data = await response.json(content_type=None)
 
                 code = data.get("code")
                 if code != 200:
@@ -932,6 +932,64 @@ class AsyncThordataClient:
             await asyncio.sleep(poll_interval)
 
         raise TimeoutError(f"Task {task_id} did not complete within {max_wait} seconds")
+
+    async def run_task(
+        self,
+        file_name: str,
+        spider_id: str,
+        spider_name: str,
+        parameters: dict[str, Any],
+        universal_params: dict[str, Any] | None = None,
+        *,
+        max_wait: float = 600.0,
+        initial_poll_interval: float = 2.0,
+        max_poll_interval: float = 10.0,
+        include_errors: bool = True,
+    ) -> str:
+        """
+        Async high-level wrapper to Run a Web Scraper task and wait for result.
+
+        Lifecycle: Create -> Poll (Backoff) -> Get Download URL.
+
+        Returns:
+            str: The download URL.
+        """
+        # 1. Create Task
+        config = ScraperTaskConfig(
+            file_name=file_name,
+            spider_id=spider_id,
+            spider_name=spider_name,
+            parameters=parameters,
+            universal_params=universal_params,
+            include_errors=include_errors,
+        )
+        task_id = await self.create_scraper_task_advanced(config)
+        logger.info(f"Async Task created: {task_id}. Polling...")
+
+        # 2. Poll Status
+        import time
+
+        start_time = time.monotonic()
+        current_poll = initial_poll_interval
+
+        while (time.monotonic() - start_time) < max_wait:
+            status = await self.get_task_status(task_id)
+            status_lower = status.lower()
+
+            if status_lower in {"ready", "success", "finished"}:
+                logger.info(f"Task {task_id} ready.")
+                # 3. Get Result
+                return await self.get_task_result(task_id)
+
+            if status_lower in {"failed", "error", "cancelled"}:
+                raise ThordataNetworkError(
+                    f"Task {task_id} failed with status: {status}"
+                )
+
+            await asyncio.sleep(current_poll)
+            current_poll = min(current_poll * 1.5, max_poll_interval)
+
+        raise ThordataTimeoutError(f"Async Task {task_id} timed out after {max_wait}s")
 
     # =========================================================================
     # Proxy Account Management Methods
