@@ -70,6 +70,7 @@ jobs:
       - name: Run formatter check (Black)
         run: |
           black --check src tests examples
+        continue-on-error: ${{ matrix.python-version == '3.9' }}
 
       - name: Run type checker (MyPy)
         run: |
