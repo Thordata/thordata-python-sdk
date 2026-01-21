@@ -67,7 +67,9 @@ class TestSuite:
     def run_test(self, name: str, func: Callable[[], Any], required_vars: list[str]):
         missing = [v for v in required_vars if not os.getenv(v)]
         if missing:
-            self.log(f"⚠️  [SKIP] {name}: Missing env vars {', '.join(missing)}", YELLOW)
+            self.log(
+                f"⚠️  [SKIP] {name}: Missing env vars {', '.join(missing)}", YELLOW
+            )
             self.results.append((name, "SKIPPED", ""))
             return
 
