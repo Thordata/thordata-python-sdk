@@ -35,7 +35,7 @@ Async Usage:
     >>> asyncio.run(main())
 """
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 __author__ = "Thordata Developer Team"
 __email__ = "support@thordata.com"
 
