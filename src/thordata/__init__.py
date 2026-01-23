@@ -5,8 +5,8 @@ Official Python client for Thordata's Proxy Network, SERP API,
 Universal Scraping API (Web Unlocker), and Web Scraper API.
 """
 
-__version__ = "1.4.0"
-__author__ = "Thordata Developer Team"
+__version__ = "1.5.0"
+__author__ = "Thordata Developer Team/Kael Odin"
 __email__ = "support@thordata.com"
 
 # Main clients

@@ -8,7 +8,7 @@ import re
 import uuid
 from dataclasses import dataclass
 from enum import Enum, IntEnum
-from typing import Any, List
+from typing import Any
 from urllib.parse import quote
 
 # Import geography from common to avoid circular issues
@@ -175,8 +175,9 @@ class ProxyConfig:
                 f"{self.protocol}://{self.host}:{self.port}",
                 aiohttp.BasicAuth(login=self.build_username(), password=self.password),
             )
-        except ImportError:
-            raise ImportError("aiohttp required")
+        except ImportError as e:
+            # Fix B904: chain the exception
+            raise ImportError("aiohttp required") from e
 
 
 @dataclass
@@ -223,8 +224,9 @@ class StaticISPProxy:
                 f"{self.protocol}://{self.host}:{self.port}",
                 aiohttp.BasicAuth(login=self.username, password=self.password),
             )
-        except ImportError:
-            raise ImportError("aiohttp required")
+        except ImportError as e:
+            # Fix B904: chain the exception
+            raise ImportError("aiohttp required") from e
 
     @classmethod
     def from_env(cls) -> StaticISPProxy:
@@ -284,17 +286,14 @@ class ProxyUserList:
     limit: float
     remaining_limit: float
     user_count: int
-    users: List[ProxyUser]
+    users: list[ProxyUser]
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ProxyUserList:
         user_list_raw = data.get("list")
         if user_list_raw is None:
             possible_data = data.get("data")
-            if isinstance(possible_data, list):
-                user_list_raw = possible_data
-            else:
-                user_list_raw = []
+            user_list_raw = possible_data if isinstance(possible_data, list) else []
         if not isinstance(user_list_raw, list):
             user_list_raw = []
 

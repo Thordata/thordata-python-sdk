@@ -1,11 +1,11 @@
 """
-🔥 Thordata SDK Full Acceptance Test Suite (v3.1) 🔥
+🔥 Thordata SDK Full Acceptance Test Suite (v3.3) 🔥
 ====================================================
 
 Updates:
-- Video Tools: Strictly matches parameter set from known working raw script.
-- Management: Added payload debugging for user updates.
-- General: Maintaining successful proxy config from v2.5.
+- Fix: Pylance typing errors (str | None mismatch).
+- Fix: User Update logic complies with API regex.
+- Feat: Added coverage for newly implemented API endpoints (Monitor, Hour Usage, Latest Task).
 
 Usage:
     python examples/full_acceptance_test.py
@@ -69,33 +69,34 @@ class AcceptanceSuite:
             from dotenv import load_dotenv
 
             load_dotenv()
-        except:
+        except Exception:
             pass
 
         self.scraper_token = os.getenv("THORDATA_SCRAPER_TOKEN")
         self.public_token = os.getenv("THORDATA_PUBLIC_TOKEN")
         self.public_key = os.getenv("THORDATA_PUBLIC_KEY")
 
+        # FIX: Pylance 'str | None' error -> use os.getenv(key, "")
         self.creds = {
             "residential": (
-                os.getenv("THORDATA_RESIDENTIAL_USERNAME"),
-                os.getenv("THORDATA_RESIDENTIAL_PASSWORD"),
+                os.getenv("THORDATA_RESIDENTIAL_USERNAME", ""),
+                os.getenv("THORDATA_RESIDENTIAL_PASSWORD", ""),
             ),
             "mobile": (
-                os.getenv("THORDATA_MOBILE_USERNAME"),
-                os.getenv("THORDATA_MOBILE_PASSWORD"),
+                os.getenv("THORDATA_MOBILE_USERNAME", ""),
+                os.getenv("THORDATA_MOBILE_PASSWORD", ""),
             ),
             "datacenter": (
-                os.getenv("THORDATA_DATACENTER_USERNAME"),
-                os.getenv("THORDATA_DATACENTER_PASSWORD"),
+                os.getenv("THORDATA_DATACENTER_USERNAME", ""),
+                os.getenv("THORDATA_DATACENTER_PASSWORD", ""),
             ),
             "isp": (
-                os.getenv("THORDATA_ISP_USERNAME"),
-                os.getenv("THORDATA_ISP_PASSWORD"),
+                os.getenv("THORDATA_ISP_USERNAME", ""),
+                os.getenv("THORDATA_ISP_PASSWORD", ""),
             ),
         }
         self.res_host = os.getenv("THORDATA_PROXY_HOST", "pr.thordata.net")
-        self.isp_host = os.getenv("THORDATA_ISP_HOST")
+        self.isp_host = os.getenv("THORDATA_ISP_HOST", "")
         self.upstream = os.getenv("THORDATA_UPSTREAM_PROXY")
 
         if not all([self.scraper_token, self.public_token, self.public_key]):
@@ -110,7 +111,7 @@ class AcceptanceSuite:
         )
 
     def run_all(self):
-        print(f"{BOLD}Starting Full Acceptance Test (v3.1)...{RESET}")
+        print(f"{BOLD}Starting Full Acceptance Test (v3.3)...{RESET}")
 
         self.test_account()
         self.test_locations()
@@ -120,6 +121,7 @@ class AcceptanceSuite:
         self.test_tools_ecommerce()
         self.test_tools_video()
         self.test_management()
+        self.test_new_features_audit()  # New coverage
         print(f"\n{BOLD}{GREEN}All Tests Completed.{RESET}")
 
     def test_account(self):
@@ -282,7 +284,7 @@ class AcceptanceSuite:
         except Exception as e:
             log_fail("Whitelist failed", e)
 
-        user = f"t{uuid.uuid4().hex[:6]}"
+        user = f"t{uuid.uuid4().hex[:6]}"  # e.g., t1a2b3c
         pwd = "Pass123"
         try:
             self.client.create_proxy_user(user, pwd, traffic_limit=100)
@@ -290,14 +292,20 @@ class AcceptanceSuite:
 
             # Debugging Update
             try:
+                # API requires letters and numbers only. No underscores.
+                # Generate a new random alphanum user.
+                new_user_name = f"u{uuid.uuid4().hex[:6]}"
+
                 self.client.update_proxy_user(
                     username=user,
+                    new_username=new_user_name,
                     password=pwd,
                     traffic_limit=500,
                     status=True,
                     proxy_type=1,
                 )
-                log_pass("Updated User (Full params)")
+                log_pass(f"Updated User (Renamed to {new_user_name})")
+                user = new_user_name
             except Exception as e:
                 log_fail("Update User Failed", e)
 
@@ -305,6 +313,55 @@ class AcceptanceSuite:
             log_pass("Deleted User")
         except Exception as e:
             log_fail("Proxy User failed", e)
+
+    def test_new_features_audit(self):
+        log_section("9. Features Audit (100% Coverage)")
+
+        # 1. Latest Task Status
+        try:
+            status = self.client.get_latest_task_status()
+            log_pass(f"Latest Task Status: {status}")
+        except AttributeError:
+            log_fail("Method get_latest_task_status() MISSING in SDK")
+        except Exception as e:
+            log_fail("Latest Task Status failed", e)
+
+        # 2. Hourly Usage
+        user = os.getenv("THORDATA_RESIDENTIAL_USERNAME")
+        if user:
+            try:
+                # Use yesterday to ensure data exists, or just check call success
+                from datetime import datetime, timedelta
+
+                now = datetime.now()
+                start = (now - timedelta(hours=2)).strftime("%Y-%m-%d %H")
+                end = now.strftime("%Y-%m-%d %H")
+
+                usage = self.client.get_proxy_user_usage_hour(user, start, end)
+                log_pass(f"Hourly Usage: fetched {len(usage)} records")
+            except AttributeError:
+                log_fail("Method get_proxy_user_usage_hour() MISSING in SDK")
+            except Exception as e:
+                log_fail("Hourly Usage failed", e)
+        else:
+            log_skip("Skipping Hourly Usage (No residential user env)")
+
+        # 3. Unlimited Monitor
+        try:
+            # We might not have a valid ins_id, so we expect a failure or empty return,
+            # but we verify the METHOD exists and runs.
+            # Using a dummy ins_id to test parameter passing
+            try:
+                self.client.unlimited.get_server_monitor("ins-dummy", "us", 1000, 2000)
+                log_pass("Unlimited Server Monitor (Method Exists)")
+            except ThordataAPIError:
+                log_pass(
+                    "Unlimited Server Monitor (Method Exists - API Rejected dummy ID)"
+                )
+        except AttributeError:
+            log_fail("Method unlimited.get_server_monitor() MISSING in SDK")
+        except Exception as e:
+            log_fail("Unlimited Monitor failed", e)
 
 
 if __name__ == "__main__":

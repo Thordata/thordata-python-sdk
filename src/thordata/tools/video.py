@@ -5,7 +5,6 @@ Video & Audio Scraper Tools (YouTube, etc.)
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from ..types.common import CommonSettings
 from .base import ToolRequest, VideoToolRequest
@@ -42,7 +41,7 @@ class YouTube:
         SPIDER_NAME = "youtube.com"
 
         video_id: str
-        subtitles_type: Optional[str] = None  # Auto generated / user uploaded
+        subtitles_type: str | None = None  # Auto generated / user uploaded
         common_settings: CommonSettings = field(default_factory=CommonSettings)
 
     @dataclass
@@ -54,7 +53,7 @@ class YouTube:
 
         url: str  # Channel URL
         page_turning: int = 1
-        keyword: Optional[str] = None
+        keyword: str | None = None
         common_settings: CommonSettings = field(default_factory=CommonSettings)
 
     @dataclass
@@ -65,8 +64,8 @@ class YouTube:
         SPIDER_NAME = "youtube.com"
 
         video_id: str
-        num_of_comments: Optional[int] = None
-        sort_by: Optional[str] = None  # Top comments / Newest first
+        num_of_comments: int | None = None
+        sort_by: str | None = None  # Top comments / Newest first
         common_settings: CommonSettings = field(default_factory=CommonSettings)
 
     @dataclass
@@ -79,4 +78,4 @@ class YouTube:
         SPIDER_NAME = "youtube.com"
 
         url: str  # Channel Video URL
-        num_of_posts: Optional[str] = None
+        num_of_posts: str | None = None

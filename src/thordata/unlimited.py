@@ -100,3 +100,70 @@ class UnlimitedNamespace:
                 f"Action {endpoint} failed", code=data.get("code"), payload=data
             )
         return data.get("data", {})
+
+    def get_server_monitor(
+        self,
+        ins_id: str,
+        region: str,
+        start_time: int,
+        end_time: int,
+        period: int = 300,
+    ) -> dict[str, Any]:
+        """
+        Get Unlimited Proxy Server monitor (CPU, Mem, TCP, Bandwidth).
+        """
+        self._client._require_public_credentials()
+        params = {
+            "token": self._client.public_token,
+            "key": self._client.public_key,
+            "ins_id": ins_id,
+            "region": region,
+            "start_time": str(start_time),
+            "end_time": str(end_time),
+            "period": str(period),
+        }
+        # Note: Endpoint is /api/unlimited/server-monitor
+        response = self._client._api_request_with_retry(
+            "GET", f"{self._api_base}/unlimited/server-monitor", params=params
+        )
+        response.raise_for_status()
+        data = response.json()
+        if data.get("code") != 200:
+            raise_for_code(
+                "Get server monitor failed", code=data.get("code"), payload=data
+            )
+        return data.get("data", {})
+
+    def get_balancing_monitor(
+        self,
+        ins_id: str,
+        region: str,
+        start_time: int,
+        end_time: int,
+        period: int = 300,
+    ) -> dict[str, Any]:
+        """
+        Get Unlimited Residential Proxy Load Balancing Machine Monitoring.
+        """
+        self._client._require_public_credentials()
+        params = {
+            "token": self._client.public_token,
+            "key": self._client.public_key,
+            "ins_id": ins_id,
+            "region": region,
+            "start_time": str(start_time),
+            "end_time": str(end_time),
+            "period": str(period),
+        }
+        response = self._client._api_request_with_retry(
+            "GET", f"{self._api_base}/unlimited/balancing-monitor", params=params
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        # Note: This endpoint uses 'status_code' instead of 'code' in the root
+        code = data.get("status_code", data.get("code"))
+        if code != 200:
+            raise_for_code("Get balancing monitor failed", code=code, payload=data)
+
+        return data.get("payload", {})

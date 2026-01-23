@@ -126,7 +126,7 @@ def main():
         from dotenv import load_dotenv
 
         load_dotenv()
-    except:
+    except Exception:  # Fix E722
         pass
 
     check_direct_connect()

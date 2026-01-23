@@ -14,7 +14,7 @@ import os
 import socket
 import ssl
 from datetime import date
-from typing import Any, Union, cast
+from typing import Any, cast
 from urllib.parse import urlencode, urlparse
 
 import requests
@@ -546,6 +546,31 @@ class ThordataClient:
                 return item.get("status", "unknown")
         return "unknown"
 
+    def get_latest_task_status(self) -> dict[str, Any]:
+        """
+        Get the status of the last task of the specified account.
+        """
+        self._require_public_credentials()
+        headers = build_public_api_headers(str(self.public_token), str(self.public_key))
+        parsed = urlparse(self._status_url)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+        endpoint = "/api/web_scraper_api/get_latest_task_status"
+
+        response = self._api_request_with_retry(
+            "POST",
+            f"{base}{endpoint}",
+            headers=headers,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("code") != 200:
+            raise_for_code(
+                "Get latest task status failed", code=data.get("code"), payload=data
+            )
+
+        return data.get("data", {})
+
     def safe_get_task_status(self, task_id: str) -> str:
         try:
             return self.get_task_status(task_id)
@@ -761,6 +786,49 @@ class ThordataClient:
         if data.get("code") != 200:
             raise_for_code("Get user usage failed", code=data.get("code"), payload=data)
         return data.get("data", [])
+
+    def get_proxy_user_usage_hour(
+        self,
+        username: str,
+        from_date: str,  # Format: yyyy-mm-dd HH
+        to_date: str,  # Format: yyyy-mm-dd HH
+        proxy_type: ProxyType | int = ProxyType.RESIDENTIAL,
+    ) -> list[dict[str, Any]]:
+        """
+        Get proxy user traffic usage logs by hour.
+
+        Args:
+            username: The proxy username.
+            from_date: Start date string (yyyy-mm-dd HH).
+            to_date: End date string (yyyy-mm-dd HH).
+            proxy_type: Proxy type (default: Residential).
+        """
+        self._require_public_credentials()
+        pt = int(proxy_type) if isinstance(proxy_type, ProxyType) else proxy_type
+
+        params = {
+            "token": self.public_token,
+            "key": self.public_key,
+            "proxy_type": str(pt),
+            "username": username,
+            "from_date": from_date,
+            "to_date": to_date,
+        }
+        response = self._api_request_with_retry(
+            "GET", f"{self._proxy_users_url}/usage-statistics-hour", params=params
+        )
+        response.raise_for_status()
+        data = response.json()
+        if data.get("code") != 200:
+            raise_for_code(
+                "Get hourly usage failed", code=data.get("code"), payload=data
+            )
+
+        # API returns { "data": { "data": [...] } } structure
+        inner_data = data.get("data", {})
+        if isinstance(inner_data, dict):
+            return inner_data.get("data", [])
+        return []
 
     def extract_ip_list(
         self,
@@ -1240,7 +1308,10 @@ class ThordataClient:
                 )
             from urllib3.contrib.socks import SOCKSProxyManager
 
-            pm = SOCKSProxyManager(proxy_url, num_pools=10, maxsize=10)  # type: ignore
+            pm = cast(
+                urllib3.PoolManager,
+                SOCKSProxyManager(proxy_url, num_pools=10, maxsize=10),
+            )
             self._proxy_managers[cache_key] = pm
             return pm
 
@@ -1403,7 +1474,10 @@ class ThordataClient:
                 # 3. If Target is HTTPS, wrap TLS inside the tunnel
                 if parsed_target.scheme == "https":
                     if isinstance(sock, ssl.SSLSocket):
-                        sock = create_tls_in_tls(sock, target_host, float(timeout))
+                        sock = cast(
+                            socket.socket,
+                            create_tls_in_tls(sock, target_host, float(timeout)),
+                        )
                     else:
                         ctx = ssl.create_default_context()
                         sock = ctx.wrap_socket(sock, server_hostname=target_host)
@@ -1419,7 +1493,7 @@ class ThordataClient:
 
     def _send_http_via_socket(
         self,
-        sock: Union[socket.socket, Any],  # Fix for TLSInTLSSocket typing issue
+        sock: socket.socket | Any,  # Fix for TLSInTLSSocket typing issue
         method: str,
         parsed: Any,
         headers: Any,

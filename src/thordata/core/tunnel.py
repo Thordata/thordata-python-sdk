@@ -11,7 +11,7 @@ import logging
 import socket
 import ssl
 import time
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 try:
@@ -127,9 +127,11 @@ class UpstreamProxySocketFactory:
                     )
                 resp += chunk
 
+            # Fix: Decode bytes safely for string formatting
             status_line = resp.split(b"\r\n")[0]
             if b"200" not in status_line:
-                raise ConnectionError(f"Upstream proxy CONNECT failed: {status_line}")
+                status_str = status_line.decode("utf-8", errors="replace")
+                raise ConnectionError(f"Upstream proxy CONNECT failed: {status_str}")
 
         except Exception:
             sock.close()
@@ -139,6 +141,10 @@ class UpstreamProxySocketFactory:
 
 
 class TLSInTLSSocket:
+    """
+    A wrapper around SSLObject to make it behave like a socket for requests.
+    """
+
     def __init__(
         self,
         outer: ssl.SSLSocket,
@@ -150,7 +156,7 @@ class TLSInTLSSocket:
         self._ssl = ssl_obj
         self._incoming = incoming
         self._outgoing = outgoing
-        self._timeout: Optional[float] = None
+        self._timeout: float | None = None
 
     def settimeout(self, t: float | None) -> None:
         self._timeout = t
@@ -238,7 +244,9 @@ def socks5_handshake(
 
     resp = sock.recv(2)
     if not resp or resp[0] != 0x05:
-        raise ConnectionError(f"Invalid SOCKS5 init response: {resp}")
+        # Fix: Decode bytes safely
+        resp_str = resp.decode("utf-8", errors="replace") if resp else "Empty"
+        raise ConnectionError(f"Invalid SOCKS5 init response: {resp_str}")
 
     if resp[1] == 0x02:  # User/Pass
         u_bytes = (user or "").encode()
@@ -265,8 +273,8 @@ def socks5_handshake(
     # 3. Response
     resp = sock.recv(4)
     if not resp or resp[1] != 0x00:
-        err = resp[1] if resp else "Empty"
-        raise ConnectionError(f"SOCKS5 Connect failed, error: {err}")
+        err = str(resp[1]) if (resp and len(resp) > 1) else "Empty/Unknown"
+        raise ConnectionError(f"SOCKS5 Connect failed, error code: {err}")
 
     atype = resp[3]
     if atype == 1:

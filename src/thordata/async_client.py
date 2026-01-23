@@ -90,6 +90,8 @@ class AsyncThordataClient:
         self._proxy_port = proxy_port
         self._retry_config = retry_config or RetryConfig()
 
+        self._api_timeout = api_timeout
+
         self._auth_mode = auth_mode.lower()
         if self._auth_mode not in ("bearer", "header_token"):
             raise ThordataConfigError(f"Invalid auth_mode: {auth_mode}")

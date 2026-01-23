@@ -5,7 +5,6 @@ E-Commerce Scraper Tools (Amazon, etc.)
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from .base import ToolRequest
 
@@ -31,7 +30,7 @@ class Amazon:
         SPIDER_NAME = "amazon.com"
 
         url: str
-        zip_code: Optional[str] = None
+        zip_code: str | None = None
 
     @dataclass
     class Review(ToolRequest):
@@ -62,7 +61,7 @@ class Amazon:
         keyword: str
         domain: str = "amazon.com"
         page_turning: int = 1
-        sort_by: Optional[str] = None  # Best Sellers, Newest Arrivals, etc.
-        min_price: Optional[float] = None
-        max_price: Optional[float] = None
-        get_sponsored: Optional[bool] = None
+        sort_by: str | None = None  # Best Sellers, Newest Arrivals, etc.
+        min_price: float | None = None
+        max_price: float | None = None
+        get_sponsored: bool | None = None

@@ -5,7 +5,6 @@ Search Engine & Map Scraper Tools (Google, etc.)
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from .base import ToolRequest
 
@@ -30,7 +29,7 @@ class GoogleMaps:
         SPIDER_NAME = "google.com"
 
         url: str
-        days_limit: Optional[int] = None  # Crawl reviews within X days
+        days_limit: int | None = None  # Crawl reviews within X days
 
 
 class GoogleShopping:
@@ -44,7 +43,7 @@ class GoogleShopping:
         SPIDER_NAME = "google.com"
 
         url: str
-        country: Optional[str] = None  # e.g. "US"
+        country: str | None = None  # e.g. "US"
 
 
 class GooglePlay:
@@ -58,7 +57,7 @@ class GooglePlay:
         SPIDER_NAME = "google.com"
 
         app_url: str
-        country: Optional[str] = None
+        country: str | None = None
 
     @dataclass
     class Reviews(ToolRequest):
@@ -68,7 +67,7 @@ class GooglePlay:
         SPIDER_NAME = "google.com"
 
         app_url: str
-        num_of_reviews: Optional[int] = None
-        start_date: Optional[str] = None  # yyyy-mm-dd
-        end_date: Optional[str] = None
-        country: Optional[str] = None
+        num_of_reviews: int | None = None
+        start_date: str | None = None  # yyyy-mm-dd
+        end_date: str | None = None
+        country: str | None = None

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 import aiohttp
 
@@ -24,10 +24,10 @@ class AsyncThordataHttpSession:
     Async wrapper for HTTP requests with built-in retry logic.
     """
 
-    def __init__(self, timeout: int = 30, retry_config: Optional[RetryConfig] = None):
+    def __init__(self, timeout: int = 30, retry_config: RetryConfig | None = None):
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._retry_config = retry_config or RetryConfig()
-        self._session: Optional[aiohttp.ClientSession] = None
+        self._session: aiohttp.ClientSession | None = None
         self._headers = {
             "User-Agent": build_user_agent(_sdk_version, "aiohttp"),
             "Accept-Encoding": "gzip, deflate",
@@ -49,12 +49,12 @@ class AsyncThordataHttpSession:
         self,
         method: str,
         url: str,
-        params: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
         data: Any = None,
-        headers: Optional[Dict[str, str]] = None,
-        timeout: Optional[int] = None,
-        proxy: Optional[str] = None,
-        proxy_auth: Optional[aiohttp.BasicAuth] = None,
+        headers: dict[str, str] | None = None,
+        timeout: int | None = None,
+        proxy: str | None = None,
+        proxy_auth: aiohttp.BasicAuth | None = None,
     ) -> aiohttp.ClientResponse:
         """
         Execute async HTTP request with automatic retry logic.

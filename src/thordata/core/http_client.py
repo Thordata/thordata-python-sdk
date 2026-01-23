@@ -5,7 +5,7 @@ Handles authentication injection, retries, and session lifecycle.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 import requests
 
@@ -23,7 +23,7 @@ class ThordataHttpSession:
     def __init__(
         self,
         timeout: int = 30,
-        retry_config: Optional[RetryConfig] = None,
+        retry_config: RetryConfig | None = None,
         trust_env: bool = True,
     ):
         self._session = requests.Session()
@@ -46,10 +46,10 @@ class ThordataHttpSession:
         self,
         method: str,
         url: str,
-        params: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
         data: Any = None,
-        headers: Optional[Dict[str, str]] = None,
-        timeout: Optional[int] = None,
+        headers: dict[str, str] | None = None,
+        timeout: int | None = None,
         stream: bool = False,
     ) -> requests.Response:
         """

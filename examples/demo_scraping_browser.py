@@ -17,7 +17,6 @@ import asyncio
 import logging
 import os
 import sys
-from typing import Dict, List
 
 try:
     from dotenv import load_dotenv
@@ -33,7 +32,7 @@ logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s")
 logger = logging.getLogger("browser_demo")
 
 
-async def scrape_amazon_products(keyword: str = "thinkpad") -> List[Dict]:
+async def scrape_amazon_products(keyword: str = "thinkpad") -> list[dict]:
     """
     Scrape Amazon search results using Playwright over CDP.
     """
@@ -96,9 +95,9 @@ async def scrape_amazon_products(keyword: str = "thinkpad") -> List[Dict]:
                     const titleEl = item.querySelector('h2 a span');
                     const priceEl = item.querySelector('.a-price .a-offscreen');
                     const linkEl = item.querySelector('h2 a');
-                    
+
                     if (!titleEl) return null;
-                    
+
                     return {{
                         title: titleEl.innerText,
                         price: priceEl ? priceEl.innerText : 'N/A',
