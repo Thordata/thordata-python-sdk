@@ -1,7 +1,32 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [1.5.0] - 2026-01-21
 
+### 🚀 Major Architectural Changes
+- **New Core Networking Layer**: Completely rewrote the HTTP/Tunneling core (`thordata.core`).
+  - Implemented manual `SOCKS5` handshake and `HTTP CONNECT` tunneling to support **TLS-in-TLS**.
+  - Solved `aiohttp` limitations with HTTPS proxies by implementing a custom socket factory.
+  - Added support for `THORDATA_UPSTREAM_PROXY` to facilitate development in restricted network environments (e.g., behind Clash/VPN).
+- **Type Safety**: Achieved 100% strict type compliance.
+  - Resolved all `Pylance`/`Mypy` errors including strict `Optional` handling.
+  - Moved all data models to `thordata.types` for better organization (kept legacy imports for compatibility).
+
+### ✨ New Features
+- **100% API Coverage**: Added support for all remaining Thordata endpoints:
+  - **Unlimited Proxy**: Added `server-monitor`, `balancing-monitor`, and sub-user whitelist management.
+  - **Proxy User**: Added `usage-statistics-hour` (Hourly usage reports).
+  - **Task API**: Added `get_latest_task_status`.
+- **Advanced Retry Logic**: Introduced configurable `RetryConfig` with exponential backoff and jitter for both Sync and Async clients.
+- **Tools API**: Enhanced `thordata.tools` with strict parameter validation for Video/Audio tasks.
+
+### 🛠 Fixes
+- **Browser Automation**: Fixed `get_browser_connection_url` to properly URL-encode credentials with special characters.
+- **User Management**: Fixed `update_proxy_user` logic to comply with backend alphanumeric constraints.
+- **Async Client**: Fixed missing `_api_timeout` attribute in `AsyncThordataClient`.
+- **Packaging**: Removed redundant test files and legacy documentation from the distribution.
+
+---
 ## [1.1.0] - 2026-01-06
 
 ### Added

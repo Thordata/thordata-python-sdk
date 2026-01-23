@@ -19,14 +19,13 @@
 
 ## 📖 Introduction
 
-This SDK provides a robust, high-performance interface to Thordata's AI data infrastructure. It is designed for high-concurrency scraping, reliable proxy tunneling, and seamless data extraction.
+The **Thordata Python SDK v1.5.0** is a production-ready wrapper for Thordata's AI data infrastructure. It is architected for high reliability, strict type safety, and maximum performance.
 
-**Key Features:**
-*   **🚀 Production Ready:** Built on `urllib3` connection pooling for low-latency proxy requests.
-*   **⚡ Async Support:** Native `aiohttp` client for high-concurrency SERP/Universal scraping.
-*   **🛡️ Robust:** Handles TLS-in-TLS tunneling, retries, and error parsing automatically.
-*   **✨ Developer Experience:** Fully typed (`mypy` compatible) with intuitive IDE autocomplete.
-*   **🧩 Lazy Validation:** Only validate credentials for the features you actually use.
+**Why v1.5.0?**
+*   **🛡️ Bulletproof Networking**: Custom core handles `HTTP`, `HTTPS`, and `SOCKS5h` (Remote DNS) tunneling, solving common SSL/TLS handshake issues in complex network environments.
+*   **⚡ Async First**: First-class `asyncio` support with `aiohttp` for high-concurrency scraping (1000+ RPS).
+*   **🧩 100% API Coverage**: Every endpoint documented by Thordata (including Hourly Usage, Server Monitor, and Task Management) is implemented.
+*   **🤖 Type Safe**: Fully typed (`mypy` strict) for excellent IDE autocompletion and error checking.
 
 ---
 
@@ -40,72 +39,74 @@ pip install thordata-sdk
 
 ## 🔐 Configuration
 
-Set environment variables to avoid hardcoding credentials. You only need to set the variables for the features you use.
+Set environment variables to avoid hardcoding credentials.
 
 ```bash
-# [Required for SERP & Web Unlocker]
-export THORDATA_SCRAPER_TOKEN="your_token_here"
+# [Scraping APIs]
+export THORDATA_SCRAPER_TOKEN="your_scraper_token"
 
-# [Required for Proxy Network]
+# [Management APIs]
+export THORDATA_PUBLIC_TOKEN="your_public_token"
+export THORDATA_PUBLIC_KEY="your_public_key"
+
+# [Proxy Network]
 export THORDATA_RESIDENTIAL_USERNAME="your_username"
 export THORDATA_RESIDENTIAL_PASSWORD="your_password"
-export THORDATA_PROXY_HOST="vpnXXXX.pr.thordata.net"
-
-# [Required for Task Management]
-export THORDATA_PUBLIC_TOKEN="public_token"
-export THORDATA_PUBLIC_KEY="public_key"
+# Optional: Set upstream proxy for local dev (e.g., Clash)
+# export THORDATA_UPSTREAM_PROXY="http://127.0.0.1:7890"
 ```
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. SERP Search (Google/Bing/Yandex)
+### 1. SERP Search (Google/Bing)
 
 ```python
 from thordata import ThordataClient, Engine
 
-client = ThordataClient()  # Loads THORDATA_SCRAPER_TOKEN from env
+client = ThordataClient() 
 
-# Simple Search
-print("Searching...")
-results = client.serp_search("latest AI trends", engine=Engine.GOOGLE_NEWS)
+# Search Google
+results = client.serp_search(
+    query="latest AI trends",
+    engine=Engine.GOOGLE,
+    num=10,
+    location="United States"
+)
 
-for news in results.get("news_results", [])[:3]:
-    print(f"- {news['title']} ({news['source']})")
+for item in results.get("organic", []):
+    print(f"{item['title']} - {item['link']}")
 ```
 
 ### 2. Universal Scrape (Web Unlocker)
 
-Bypass Cloudflare/Akamai and render JavaScript automatically.
+Automatically handles JS rendering, CAPTCHAs, and fingerprinting.
 
 ```python
 html = client.universal_scrape(
-    url="https://example.com/protected-page",
+    url="https://example.com",
     js_render=True,
-    wait_for=".content-loaded",
-    country="us"
+    country="us",
+    wait_for=".content-loaded"  # Smart waiting
 )
-print(f"Scraped {len(html)} bytes")
 ```
 
-### 3. High-Performance Proxy
+### 3. High-Performance Proxy Tunneling
 
-Use Thordata's residential IPs with automatic connection pooling.
+Use Thordata's residential IPs directly with `requests` (Sync) or `aiohttp` (Async). The SDK handles the complex authentication and rotation logic.
 
 ```python
 from thordata import ProxyConfig, ProxyProduct
 
-# Config is optional if env vars are set, but allows granular control
+# Config is optional if env vars are set
 proxy = ProxyConfig(
     product=ProxyProduct.RESIDENTIAL,
     country="jp",
-    city="tokyo",
-    session_id="session-001",
     session_duration=10  # Sticky IP for 10 mins
 )
 
-# Use the client to make requests (Reuses TCP connections)
+# The client automatically routes this through Thordata's network
 response = client.get("https://httpbin.org/ip", proxy_config=proxy)
 print(response.json())
 ```
@@ -114,9 +115,9 @@ print(response.json())
 
 ## ⚙️ Advanced Usage
 
-### Async Client (High Concurrency)
+### Async High-Concurrency
 
-For building AI agents or high-throughput spiders.
+Perfect for building high-throughput AI agents.
 
 ```python
 import asyncio
@@ -124,20 +125,17 @@ from thordata import AsyncThordataClient
 
 async def main():
     async with AsyncThordataClient() as client:
-        # Fire off multiple requests in parallel
-        tasks = [
-            client.serp_search(f"query {i}") 
-            for i in range(5)
-        ]
+        # Fire off 10 requests in parallel
+        tasks = [client.serp_search(f"query {i}") for i in range(10)]
         results = await asyncio.gather(*tasks)
         print(f"Completed {len(results)} searches")
 
 asyncio.run(main())
 ```
 
-### Web Scraper API (Task Management)
+### Task Management (Batch Scraping)
 
-Create and manage large-scale scraping tasks asynchronously.
+Handle large-scale scraping jobs asynchronously.
 
 ```python
 # 1. Create a task
@@ -148,60 +146,41 @@ task_id = client.create_scraper_task(
     parameters={"url": "https://example.com"}
 )
 
-# 2. Wait for completion (Polling)
-status = client.wait_for_task(task_id)
+# 2. Poll for completion (Helper method)
+status = client.wait_for_task(task_id, max_wait=600)
 
-# 3. Get results
-if status == "ready":
-    url = client.get_task_result(task_id)
-    print(f"Download Data: {url}")
+# 3. Download results
+if status == "finished":
+    data_url = client.get_task_result(task_id)
+    print(f"Download: {data_url}")
 ```
 
 ---
 
-## 🔥 Web Scraper Tools (High-Level API)
+## 🛠️ Management APIs
 
-Stop guessing parameters! The SDK provides strongly-typed classes for 30+ popular websites including Amazon, Google, TikTok, Twitter, LinkedIn, and YouTube.
+Manage your infrastructure programmatically.
 
-### Amazon Product Scraper
 ```python
-from thordata.tools import Amazon
+# Check Balance
+balance = client.get_traffic_balance()
 
-task_id = client.run_tool(
-    Amazon.Product(asin="B08N5WRWNW", domain="amazon.co.uk")
+# Manage Whitelist
+client.add_whitelist_ip("1.2.3.4")
+
+# Create Sub-users
+client.create_proxy_user("new_user", "pass123", traffic_limit=500)
+
+# Monitor Unlimited Proxies
+monitor = client.unlimited.get_server_monitor(
+    ins_id="ins-123", 
+    region="us", 
+    start_time=1700000000, 
+    end_time=1700003600
 )
 ```
 
-### Google Maps Scraper
-```python
-from thordata.tools import GoogleMaps
-
-task_id = client.run_tool(
-    GoogleMaps.Details(url="https://www.google.com/maps/place/...")
-)
-```
-
-### TikTok Profile Scraper
-```python
-from thordata.tools import TikTok
-
-task_id = client.run_tool(
-    TikTok.Profile(url="https://www.tiktok.com/@tiktok", country="us")
-)
-```
-
-### YouTube Video Downloader
-```python
-from thordata.tools import YouTube
-from thordata import CommonSettings
-
-task_id = client.run_tool(
-    YouTube.VideoDownload(
-        url="https://youtu.be/...",
-        common_settings=CommonSettings(resolution="1080p")
-    )
-)
-```
+---
 
 ## 📄 License
 
