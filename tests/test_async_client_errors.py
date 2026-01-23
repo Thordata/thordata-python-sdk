@@ -2,6 +2,7 @@
 Tests for AsyncThordataClient error handling.
 """
 
+from collections.abc import Generator
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -13,11 +14,17 @@ from thordata import AsyncThordataClient, ThordataAuthError, ThordataRateLimitEr
 class DummyAsyncResponse:
     """
     Minimal async fake response object for aiohttp.
+    Made awaitable to support 'await session.request(...)'.
     """
 
     def __init__(self, json_data: dict[str, Any], status: int = 200) -> None:
         self._json_data = json_data
         self.status = status
+
+    # Support 'await response' pattern used by session.request in new core
+    def __await__(self) -> Generator[Any, None, "DummyAsyncResponse"]:
+        yield
+        return self
 
     async def __aenter__(self) -> "DummyAsyncResponse":
         return self
@@ -52,14 +59,21 @@ async def test_async_universal_scrape_rate_limit_error() -> None:
         public_key="PUBLIC_KEY",
     )
 
+    # Initialize the http wrapper manually since we aren't using 'async with'
+    await client._http._ensure_session()
+
     # Create a mock session with closed=False
     mock_session = MagicMock()
-    mock_session.closed = False  # Explicitly set closed to False
-    mock_response = DummyAsyncResponse({"code": 402, "msg": "Insufficient balance"})
-    mock_session.post.return_value = mock_response
+    mock_session.closed = False
 
-    # Manually set the session
-    client._session = mock_session
+    # Mock response
+    mock_response = DummyAsyncResponse({"code": 402, "msg": "Insufficient balance"})
+
+    # Configure mock_session.request to return the awaitable mock_response
+    mock_session.request.return_value = mock_response
+
+    # Inject mock into the _http wrapper
+    client._http._session = mock_session
 
     with pytest.raises(ThordataRateLimitError) as exc_info:
         await client.universal_scrape("https://example.com")
@@ -82,14 +96,17 @@ async def test_async_create_scraper_task_auth_error() -> None:
         public_key="PUBLIC_KEY",
     )
 
-    # Create a mock session with closed=False
-    mock_session = MagicMock()
-    mock_session.closed = False  # Explicitly set closed to False
-    mock_response = DummyAsyncResponse({"code": 401, "msg": "Unauthorized"})
-    mock_session.post.return_value = mock_response
+    await client._http._ensure_session()
 
-    # Manually set the session
-    client._session = mock_session
+    mock_session = MagicMock()
+    mock_session.closed = False
+    mock_response = DummyAsyncResponse({"code": 401, "msg": "Unauthorized"})
+
+    # Mock request return value
+    mock_session.request.return_value = mock_response
+
+    # Inject mock
+    client._http._session = mock_session
 
     with pytest.raises(ThordataAuthError) as exc_info:
         await client.create_scraper_task(

@@ -159,6 +159,50 @@ if status == "ready":
 
 ---
 
+## 🔥 Web Scraper Tools (High-Level API)
+
+Stop guessing parameters! The SDK provides strongly-typed classes for 30+ popular websites including Amazon, Google, TikTok, Twitter, LinkedIn, and YouTube.
+
+### Amazon Product Scraper
+```python
+from thordata.tools import Amazon
+
+task_id = client.run_tool(
+    Amazon.Product(asin="B08N5WRWNW", domain="amazon.co.uk")
+)
+```
+
+### Google Maps Scraper
+```python
+from thordata.tools import GoogleMaps
+
+task_id = client.run_tool(
+    GoogleMaps.Details(url="https://www.google.com/maps/place/...")
+)
+```
+
+### TikTok Profile Scraper
+```python
+from thordata.tools import TikTok
+
+task_id = client.run_tool(
+    TikTok.Profile(url="https://www.tiktok.com/@tiktok", country="us")
+)
+```
+
+### YouTube Video Downloader
+```python
+from thordata.tools import YouTube
+from thordata import CommonSettings
+
+task_id = client.run_tool(
+    YouTube.VideoDownload(
+        url="https://youtu.be/...",
+        common_settings=CommonSettings(resolution="1080p")
+    )
+)
+```
+
 ## 📄 License
 
 MIT License. See [LICENSE](LICENSE) for details.

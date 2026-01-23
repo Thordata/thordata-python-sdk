@@ -4,15 +4,8 @@ Tests for AsyncThordataClient.
 
 import pytest
 
-# check aioresponses
-try:
-
-    HAS_AIORESPONSES = True
-except ImportError:
-    HAS_AIORESPONSES = False
-
 from thordata import AsyncThordataClient
-from thordata.exceptions import ThordataConfigError
+from thordata.exceptions import ThordataConfigError, ThordataNetworkError
 from thordata.models import ProxyConfig, ProxyProduct
 
 # Mark all tests in this module as async
@@ -25,7 +18,6 @@ TEST_PUB_KEY = "async_key"
 
 
 def _https_proxy_config_dummy() -> ProxyConfig:
-    # Dummy values are fine because AsyncThordataClient will block before any network call
     return ProxyConfig(
         username="dummy",
         password="dummy",
@@ -54,12 +46,14 @@ async def test_async_client_initialization(async_client):
     assert async_client.public_token == TEST_PUB_TOKEN
     assert async_client.public_key == TEST_PUB_KEY
 
-    # The fixture likely enters async context, so session should exist
-    assert async_client._session is not None
-    assert not async_client._session.closed
+    # Fix: Access session via _http wrapper
+    assert async_client._http._session is not None
+    assert not async_client._http._session.closed
 
 
 async def test_async_proxy_network_https_not_supported():
+    """Test that we raise ConfigError for HTTPS proxies in aiohttp."""
+    # Ensure strict check is hit before network
     async with AsyncThordataClient(scraper_token="test_token") as client:
         with pytest.raises(ThordataConfigError) as exc:
             await client.get(
@@ -67,18 +61,41 @@ async def test_async_proxy_network_https_not_supported():
                 proxy_config=_https_proxy_config_dummy(),
             )
 
-        assert "Proxy Network requires an HTTPS proxy endpoint" in str(exc.value)
+        # Check for the specific error message about aiohttp limitation
+        assert "aiohttp support for 'https://' proxies is limited" in str(exc.value)
 
 
 async def test_async_http_error_handling():
-    async with AsyncThordataClient(scraper_token="test_token") as client:
-        with pytest.raises(ThordataConfigError) as exc:
+    """
+    Test that connection errors are wrapped in ThordataNetworkError.
+
+    This test attempts to connect to an invalid local proxy port to force a connection error.
+    """
+    # Create a config that points to localhost on a closed port
+    bad_proxy = ProxyConfig(
+        username="user",
+        password="pass",
+        host="127.0.0.1",
+        port=1,  # Port 1 is likely closed/unreachable
+        protocol="http",
+    )
+
+    async with AsyncThordataClient(
+        scraper_token="test_token",
+        timeout=1,
+        # Disable retries to speed up test failure
+        retry_config=None,
+    ) as client:
+        # Override retry config to 0 for this specific instance to fail fast
+        client._retry_config.max_retries = 0
+
+        with pytest.raises(ThordataNetworkError) as exc:
             await client.get(
-                "https://httpbin.org/status/404",
-                proxy_config=_https_proxy_config_dummy(),
+                "http://example.com",
+                proxy_config=bad_proxy,
             )
 
-        assert "Proxy Network requires an HTTPS proxy endpoint" in str(exc.value)
+        assert "Async request failed" in str(exc.value)
 
 
 async def test_async_missing_scraper_token():
@@ -89,7 +106,6 @@ async def test_async_missing_scraper_token():
     # 2. Use async context manager to init session
     async with client:
         # 3. Method call should fail
-        with pytest.raises(
-            ThordataConfigError, match="scraper_token is required for SERP API"
-        ):
+        # Updated match string to match actual code in async_client.py
+        with pytest.raises(ThordataConfigError, match="scraper_token required"):
             await client.serp_search("test")

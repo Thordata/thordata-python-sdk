@@ -1,75 +1,128 @@
 """
-Scraping Browser Demo - Remote Browser Automation
+Scraping Browser Demo - Advanced Automation (Amazon)
 
+Matches the capability of the Node.js Puppeteer examples.
 Demonstrates:
-- Using SDK helper to generate connection URL
-- Connecting to Thordata's Scraping Browser via WebSocket
-- Using Playwright for automation
+1. Connecting to Thordata Scraping Browser
+2. navigating to Amazon
+3. Waiting for selectors
+4. Parsing results
 
-Usage:
-    python examples/demo_scraping_browser.py
+Requirements:
+    pip install playwright
+    playwright install chromium
 """
 
 import asyncio
 import logging
-from pathlib import Path
+import os
+import sys
+from typing import Dict, List
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
 
 from thordata import AsyncThordataClient, ThordataConfigError
 
-logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
+# Configure Logging
+logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s")
+logger = logging.getLogger("browser_demo")
 
-load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 
-
-async def demo_basic_navigation():
-    print("\n" + "=" * 50)
-    print("1️⃣  Basic Navigation (using SDK helper)")
-    print("=" * 50)
-
-    # Initialize client to use the helper
+async def scrape_amazon_products(keyword: str = "thinkpad") -> List[Dict]:
+    """
+    Scrape Amazon search results using Playwright over CDP.
+    """
+    # 1. Initialize Client to get the Secure WebSocket URL
     client = AsyncThordataClient()
 
     try:
-        # Use the new helper method
+        # Automatically loads THORDATA_BROWSER_USERNAME / THORDATA_RESIDENTIAL_USERNAME
         ws_endpoint = client.get_browser_connection_url()
-        print(f"   Generated Endpoint: {ws_endpoint[:20]}... (hidden)")
+        logger.info("✅ Generated WebSocket Endpoint")
     except ThordataConfigError as e:
-        print(f"❌ Configuration Error: {e}")
-        print("   Set THORDATA_BROWSER_USERNAME/PASSWORD in .env")
-        return
+        logger.error(f"❌ Config Error: {e}")
+        return []
 
     try:
-        from playwright.async_api import async_playwright  # type: ignore[import]
+        from playwright.async_api import async_playwright  # type: ignore
     except ImportError:
-        print(
-            "⚠️  Playwright not installed. Run: pip install playwright && playwright install chromium"
+        logger.error(
+            "❌ Playwright not installed. Run: pip install playwright && playwright install chromium"
         )
-        return
+        return []
 
-    try:
-        async with async_playwright() as p:
-            print("   Connecting to Scraping Browser...")
-            browser = await p.chromium.connect_over_cdp(ws_endpoint)
-            print("   ✅ Connected!")
+    results = []
 
-            context = await browser.new_context()
+    async with async_playwright() as p:
+        logger.info("🔌 Connecting to Scraping Browser...")
+
+        # Connect to the remote browser
+        browser = await p.chromium.connect_over_cdp(ws_endpoint)
+
+        try:
+            # Create context & page
+            context = await browser.new_context(viewport={"width": 1366, "height": 768})
             page = await context.new_page()
+            page.set_default_navigation_timeout(
+                120000
+            )  # 2 mins timeout for proxy latency
 
-            await page.goto("https://example.com")
-            print(f"   Title: {await page.title()}")
+            # Navigate
+            url = f"https://www.amazon.com/s?k={keyword}"
+            logger.info(f"🧭 Navigating to: {url}")
+            await page.goto(url, wait_until="domcontentloaded")
 
+            # Handling Anti-bot / Captcha is done automatically by the browser,
+            # but we wait for the content container to be sure.
+            selector = '[data-component-type="s-search-result"]'
+            logger.info("⏳ Waiting for product list...")
+            try:
+                await page.wait_for_selector(selector, timeout=30000)
+            except Exception:
+                logger.warning("⚠️ Selector timeout. Taking screenshot...")
+                await page.screenshot(path="amazon_error.png")
+                raise
+
+            # Extract Data
+            logger.info("📄 Parsing results...")
+            results = await page.evaluate(f"""() => {{
+                const items = Array.from(document.querySelectorAll('{selector}'));
+                return items.map(item => {{
+                    const titleEl = item.querySelector('h2 a span');
+                    const priceEl = item.querySelector('.a-price .a-offscreen');
+                    const linkEl = item.querySelector('h2 a');
+                    
+                    if (!titleEl) return null;
+                    
+                    return {{
+                        title: titleEl.innerText,
+                        price: priceEl ? priceEl.innerText : 'N/A',
+                        url: linkEl ? linkEl.href : ''
+                    }};
+                }}).filter(i => i !== null);
+            }}""")
+
+            logger.info(f"🎉 Found {len(results)} products")
+            for idx, item in enumerate(results[:5], 1):
+                logger.info(f"   {idx}. {item['title'][:50]}... | {item['price']}")
+
+        except Exception as e:
+            logger.error(f"❌ Browser Automation Failed: {e}")
+        finally:
             await browser.close()
-            print("   ✅ Browser closed")
+            logger.info("🔒 Browser closed")
 
-    except Exception as e:
-        print(f"❌ Browser Error: {e}")
+    return results
 
 
 if __name__ == "__main__":
-    print("=" * 50)
-    print("   Thordata SDK - Scraping Browser Demo")
-    print("=" * 50)
+    if not os.getenv("THORDATA_BROWSER_USERNAME"):
+        logger.error("Please set THORDATA_BROWSER_USERNAME and PASSWORD in .env")
+        sys.exit(1)
 
-    asyncio.run(demo_basic_navigation())
+    asyncio.run(scrape_amazon_products("gaming laptop"))
