@@ -46,8 +46,11 @@ class TestExampleScripts:
         self, script_path: str, env: dict, timeout: int = 60
     ) -> subprocess.CompletedProcess:
         """Run a Python script and return the result."""
+        script_abspath = os.path.join(os.path.dirname(__file__), "..", script_path)
+        script_abspath = os.path.abspath(script_abspath)
+
         return subprocess.run(
-            [sys.executable, script_path],
+            [sys.executable, script_abspath],
             env=env,
             capture_output=True,
             text=True,

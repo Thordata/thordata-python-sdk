@@ -1,6 +1,6 @@
 """
 Enumerations for the Thordata Python SDK.
-Moved to thordata.types in v1.5.0.
+Moved to thordata.types in v1.6.0.
 This file is kept for backward compatibility.
 """
 
@@ -21,7 +21,7 @@ from .types import (
     SessionType,
     TaskStatus,
     TimeRange,
-    normalize_enum_value,  # 新增
+    normalize_enum_value,
 )
 
 __all__ = [

@@ -14,9 +14,11 @@ def test_amazon_product_tool():
 
 def test_tool_integration_with_config():
     # Verify it works with the Config model logic
-    tool = Amazon.Search(keyword="laptop", min_price=100.5)
+    # Verify it works with the ToolRequest serialization logic
+    # Amazon.Search currently supports keyword/domain/page_turning
+    tool = Amazon.Search(keyword="laptop")
     params = tool.to_task_parameters()
 
     assert params["keyword"] == "laptop"
-    assert params["min_price"] == 100.5
-    assert "max_price" not in params  # Should allow None
+    assert "domain" in params
+    assert "page_turning" in params

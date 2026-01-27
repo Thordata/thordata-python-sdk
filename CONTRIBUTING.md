@@ -63,11 +63,18 @@ mypy src
 # Run all tests
 pytest
 
-# Run with coverage
-pytest --cov=thordata --cov-report=html
+# Run with coverage (recommended: use coverage CLI for reliable results)
+python -m coverage run -m pytest -p no:cov -v tests
+python -m coverage report -m
+
+# Optional: HTML report
+python -m coverage run -m pytest -p no:cov tests && python -m coverage html
+
+# From repo root with script (Git Bash / Linux / macOS)
+bash scripts/run_coverage.sh
 
 # Run specific test
-pytest tests/test_client.py::test_serp_search -v
+pytest tests/test_client.py -v -k test_serp
 ```
 
 ### Pre-commit Checks
@@ -104,14 +111,25 @@ Before committing, ensure:
 
 ```
 src/thordata/
-├── __init__.py         # Public exports
-├── client.py           # Sync client (main)
-├── async_client.py     # Async client
-├── models.py           # Dataclass models
-├── enums.py            # Enumerations
-├── exceptions.py       # Exception classes
-├── retry.py            # Retry logic
-└── _utils.py           # Internal utilities
+├── __init__.py           # Public API exports
+├── client.py             # Sync client (main)
+├── async_client.py       # Async client
+├── unlimited.py          # Sync Unlimited Proxy namespace
+├── async_unlimited.py    # Async Unlimited Proxy namespace
+├── models.py             # Re-exports (ProxyConfig, etc.)
+├── enums.py              # Engine, TaskStatus, ProxyType, etc.
+├── exceptions.py         # Exception hierarchy
+├── retry.py              # Retry decorator and RetryConfig
+├── serp_engines.py       # SERP namespace (sync/async)
+├── _utils.py             # Internal: auth headers, parse_json, etc.
+├── core/
+│   ├── http_client.py    # Sync HTTP session + retry
+│   ├── async_http_client.py
+│   └── tunnel.py         # Proxy tunneling (HTTP/HTTPS/SOCKS5)
+├── types/                # Request/response types (SerpRequest, ProxyConfig, etc.)
+│   ├── common.py, proxy.py, serp.py, task.py, universal.py
+└── tools/                # Pre-built scrapers (Amazon, YouTube, etc.)
+    ├── base.py, code.py, ecommerce.py, search.py, social.py, video.py
 ```
 
 ---
@@ -120,8 +138,43 @@ src/thordata/
 
 - Write tests for all new features
 - Use pytest fixtures for common setups
-- Mock external API calls
+- Mock external API calls for unit tests
 - Aim for >80% coverage on new code
+
+### Unit tests (no network, no proxy)
+
+Default `pytest` runs only unit tests. No `.env` or Clash needed.
+
+```bash
+pytest
+# or with coverage
+python -m coverage run -m pytest -p no:cov -v tests
+python -m coverage report -m
+```
+
+### Integration tests (live API / proxy)
+
+Integration tests are **skipped** unless explicitly enabled. They require a real `.env` with credentials.
+
+| Env | Meaning |
+|-----|--------|
+| `THORDATA_INTEGRATION=true` | Enable integration tests (e.g. proxy protocol test) |
+| `THORDATA_INTEGRATION_STRICT=true` | Fail on any proxy error; if unset, skip on likely local interference |
+| `THORDATA_INTEGRATION_HTTP=true` | Include HTTP (in addition to HTTPS/SOCKS5h) in proxy test |
+| `THORDATA_UPSTREAM_PROXY` | Optional. Set if you are behind GFW/corporate proxy (e.g. Clash Verge `http://127.0.0.1:7897`, or Clash `http://127.0.0.1:7890`). Unit tests do **not** use this. |
+
+**When to use Clash/upstream proxy**
+
+- **Unit tests**: No. They mock HTTP; no proxy needed.
+- **Integration tests** (e.g. `test_integration_proxy_protocols.py`): Only if your network blocks Thordata. Set `THORDATA_UPSTREAM_PROXY=http://127.0.0.1:7897` (Clash Verge) or `http://127.0.0.1:7890` (Clash) in `.env` and run with `THORDATA_INTEGRATION=true`.
+
+```bash
+# Run only unit tests (default)
+pytest -m "not integration"
+
+# Run integration tests (requires .env + THORDATA_INTEGRATION=true)
+THORDATA_INTEGRATION=true pytest -m integration
+```
 
 ### Example Test
 

@@ -54,16 +54,22 @@ class ScraperTaskConfig(ThordataBaseConfig):
     file_name: str
     spider_id: str
     spider_name: str
-    parameters: dict[str, Any]
+    parameters: dict[str, Any] | list[dict[str, Any]]
     universal_params: dict[str, Any] | None = None
     include_errors: bool = True
 
     def to_payload(self) -> dict[str, Any]:
+        # Handle batch parameters: if list, use as is; if dict, wrap in list
+        if isinstance(self.parameters, list):
+            params_json = json.dumps(self.parameters)
+        else:
+            params_json = json.dumps([self.parameters])
+
         payload: dict[str, Any] = {
             "file_name": self.file_name,
             "spider_id": self.spider_id,
             "spider_name": self.spider_name,
-            "spider_parameters": json.dumps([self.parameters]),
+            "spider_parameters": params_json,
             "spider_errors": "true" if self.include_errors else "false",
         }
         if self.universal_params:
@@ -76,16 +82,22 @@ class VideoTaskConfig(ThordataBaseConfig):
     file_name: str
     spider_id: str
     spider_name: str
-    parameters: dict[str, Any]
+    parameters: dict[str, Any] | list[dict[str, Any]]
     common_settings: CommonSettings
     include_errors: bool = True
 
     def to_payload(self) -> dict[str, Any]:
+        # Handle batch parameters
+        if isinstance(self.parameters, list):
+            params_json = json.dumps(self.parameters)
+        else:
+            params_json = json.dumps([self.parameters])
+
         payload: dict[str, Any] = {
             "file_name": self.file_name,
             "spider_id": self.spider_id,
             "spider_name": self.spider_name,
-            "spider_parameters": json.dumps([self.parameters]),
+            "spider_parameters": params_json,
             "spider_errors": "true" if self.include_errors else "false",
             # v2.0 Doc explicitly requires 'spider_universal' key for video tasks too sometimes,
             # but usually it's passed as 'common_settings' or 'spider_universal'.

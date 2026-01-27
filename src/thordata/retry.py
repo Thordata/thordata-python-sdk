@@ -186,7 +186,7 @@ def with_retry(
                     if isinstance(e, ThordataRateLimitError) and e.retry_after:
                         delay = max(delay, e.retry_after)
 
-                    logger.warning(
+                    logger.info(
                         f"Retry attempt {attempt + 1}/{config.max_retries} "
                         f"after {delay:.2f}s due to: {e}"
                     )

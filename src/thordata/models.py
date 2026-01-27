@@ -1,6 +1,6 @@
 """
 Data models for the Thordata Python SDK.
-Moved to thordata.types in v1.5.0.
+Moved to thordata.types in v1.6.0.
 This file is kept for backward compatibility.
 """
 

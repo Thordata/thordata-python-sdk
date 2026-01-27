@@ -49,7 +49,7 @@ def test_proxy_https_socks5h_integration():
 
     upstream = os.getenv("THORDATA_UPSTREAM_PROXY", "").strip()
     if not upstream:
-        # 没有前置代理，清除环境变量避免意外双重代理
+        # No upstream proxy: clear env to avoid accidental double proxy
         for k in [
             "HTTP_PROXY",
             "HTTPS_PROXY",
@@ -69,8 +69,7 @@ def test_proxy_https_socks5h_integration():
 
     client = ThordataClient(scraper_token=os.getenv("THORDATA_SCRAPER_TOKEN", "dummy"))
 
-    # 当有 upstream proxy 时，HTTPS 代理协议可能不支持（TLS-in-TLS 问题）
-    # 优先使用 http 或 socks5h
+    # With upstream proxy, HTTPS may be limited (TLS-in-TLS). Prefer http or socks5h.
     if upstream:
         protos = ["https", "socks5h"]
     else:

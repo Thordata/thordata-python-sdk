@@ -124,10 +124,10 @@ class AsyncThordataClient:
         ).rstrip("/")
 
         self._gateway_base_url = os.getenv(
-            "THORDATA_GATEWAY_BASE_URL", "https://api.thordata.com/api/gateway"
+            "THORDATA_GATEWAY_BASE_URL", "https://openapi.thordata.com/api/gateway"
         )
         self._child_base_url = os.getenv(
-            "THORDATA_CHILD_BASE_URL", "https://api.thordata.com/api/child"
+            "THORDATA_CHILD_BASE_URL", "https://openapi.thordata.com/api/child"
         )
 
         # URL Construction
@@ -145,7 +145,7 @@ class AsyncThordataClient:
         self._proxy_users_url = f"{shared_api_base}/proxy-users"
 
         whitelist_base = os.getenv(
-            "THORDATA_WHITELIST_BASE_URL", "https://api.thordata.com/api"
+            "THORDATA_WHITELIST_BASE_URL", "https://openapi.thordata.com/api"
         )
         self._whitelist_url = f"{whitelist_base}/whitelisted-ips"
 
@@ -352,7 +352,7 @@ class AsyncThordataClient:
         file_name: str,
         spider_id: str,
         spider_name: str,
-        parameters: dict[str, Any],
+        parameters: dict[str, Any] | list[dict[str, Any]],
         universal_params: dict[str, Any] | None = None,
     ) -> str:
         config = ScraperTaskConfig(
@@ -434,7 +434,7 @@ class AsyncThordataClient:
         file_name: str,
         spider_id: str,
         spider_name: str,
-        parameters: dict[str, Any],
+        parameters: dict[str, Any] | list[dict[str, Any]],
         common_settings: CommonSettings,
     ) -> str:
         config = VideoTaskConfig(
@@ -550,7 +550,7 @@ class AsyncThordataClient:
         file_name: str,
         spider_id: str,
         spider_name: str,
-        parameters: dict[str, Any],
+        parameters: dict[str, Any] | list[dict[str, Any]],
         universal_params: dict[str, Any] | None = None,
         *,
         max_wait: float = 600.0,
@@ -971,7 +971,12 @@ class AsyncThordataClient:
         if port:
             params["port"] = str(port)
 
-        username = os.getenv("THORDATA_RESIDENTIAL_USERNAME")
+        if product == "unlimited":
+            username = os.getenv("THORDATA_UNLIMITED_USERNAME") or os.getenv(
+                "THORDATA_RESIDENTIAL_USERNAME"
+            )
+        else:
+            username = os.getenv("THORDATA_RESIDENTIAL_USERNAME")
         if username:
             params["td-customer"] = username
 

@@ -1,5 +1,9 @@
 """
 Pytest configuration and fixtures for Thordata SDK tests.
+
+Unit tests use mocks and do not require .env or network/proxy.
+Integration tests are gated by THORDATA_INTEGRATION=true and require real credentials;
+see CONTRIBUTING.md and .env.example (Testing section).
 """
 
 from unittest.mock import MagicMock

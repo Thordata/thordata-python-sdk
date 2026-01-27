@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "thordata-sdk"
-version = "1.5.0"
+version = "1.6.0"
 description = "The Official Python SDK for Thordata - AI Data Infrastructure & Proxy Network."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -120,11 +120,11 @@ ignore_missing_imports = true
 module = ["aiohttp.*", "requests.*"]
 ignore_missing_imports = true
 
-# Pytest setup
+# Pytest setup (coverage is run separately via coverage CLI for reliability)
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "-v --cov=thordata --cov-report=term-missing"
+addopts = "-v"
 markers = ["integration: live tests that require real credentials"]
 
 # Coverage setup

@@ -13,7 +13,7 @@ from thordata.enums import (
     TaskStatus,
     normalize_enum_value,
 )
-from thordata.models import ProxyProduct  # ProxyProduct 在 models.py 中
+from thordata.models import ProxyProduct  # ProxyProduct re-exported from models
 
 
 class TestEngine:

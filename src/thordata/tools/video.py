@@ -46,14 +46,23 @@ class YouTube:
 
     @dataclass
     class Profile(VideoToolRequest):
-        """YouTube Profile Scraper. Uses video_builder."""
+        """YouTube Profile Scraper by Keyword. Uses video_builder."""
 
         SPIDER_ID = "youtube_profiles_by-keyword"
         SPIDER_NAME = "youtube.com"
 
-        url: str  # Channel URL
+        keyword: str
         page_turning: int = 1
-        keyword: str | None = None
+        common_settings: CommonSettings = field(default_factory=CommonSettings)
+
+    @dataclass
+    class ProfileByUrl(VideoToolRequest):
+        """YouTube Profile Scraper by URL. Uses video_builder."""
+
+        SPIDER_ID = "youtube_profiles_by-url"
+        SPIDER_NAME = "youtube.com"
+
+        url: str  # Channel URL
         common_settings: CommonSettings = field(default_factory=CommonSettings)
 
     @dataclass
@@ -69,13 +78,77 @@ class YouTube:
         common_settings: CommonSettings = field(default_factory=CommonSettings)
 
     @dataclass
-    class VideoInfo(ToolRequest):
-        """YouTube Video Post Scraper (Metadata only). Standard builder."""
+    class VideoInfo(VideoToolRequest):
+        """YouTube Video Basic Information Scraper. Uses video_builder."""
 
-        # Note: This one does NOT inherit from VideoToolRequest because it uses the standard builder
-        # and doesn't support common_settings in the same way.
+        SPIDER_ID = "youtube_product_by-id"
+        SPIDER_NAME = "youtube.com"
+
+        video_id: str
+        common_settings: CommonSettings = field(default_factory=CommonSettings)
+
+    @dataclass
+    class VideoPostByUrl(ToolRequest):
+        """YouTube Video Post Scraper by URL. Uses standard builder."""
+
         SPIDER_ID = "youtube_video-post_by-url"
         SPIDER_NAME = "youtube.com"
 
         url: str  # Channel Video URL
+        order_by: str | None = None
+        start_index: str | None = None
         num_of_posts: str | None = None
+
+    @dataclass
+    class VideoPostBySearchFilters(ToolRequest):
+        """YouTube Video Post Scraper by Search Filters. Uses standard builder."""
+
+        SPIDER_ID = "youtube_video-post_by-search-filters"
+        SPIDER_NAME = "youtube.com"
+
+        keyword_search: str
+        features: str | None = None
+        type: str | None = None  # Videos
+        duration: str | None = None
+        upload_date: str | None = None
+        num_of_posts: str | None = None
+
+    @dataclass
+    class VideoPostByHashtag(ToolRequest):
+        """YouTube Video Post Scraper by Hashtag. Uses standard builder."""
+
+        SPIDER_ID = "youtube_video-post_by-hashtag"
+        SPIDER_NAME = "youtube.com"
+
+        hashtag: str
+        num_of_posts: str | None = None
+
+    @dataclass
+    class VideoPostByPodcastUrl(ToolRequest):
+        """YouTube Video Post Scraper by Podcast URL. Uses standard builder."""
+
+        SPIDER_ID = "youtube_video-post_by-podcast-url"
+        SPIDER_NAME = "youtube.com"
+
+        url: str  # Playlist URL
+        num_of_posts: str | None = None
+
+    @dataclass
+    class VideoPostByKeyword(ToolRequest):
+        """YouTube Video Post Scraper by Keyword. Uses standard builder."""
+
+        SPIDER_ID = "youtube_video-post_by-keyword"
+        SPIDER_NAME = "youtube.com"
+
+        keyword: str
+        num_of_posts: str | None = None
+
+    @dataclass
+    class VideoPostByExplore(ToolRequest):
+        """YouTube Video Post Scraper by Explore URL. Uses standard builder."""
+
+        SPIDER_ID = "youtube_video-post_by-explore"
+        SPIDER_NAME = "youtube.com"
+
+        url: str
+        all_tabs: str | None = None

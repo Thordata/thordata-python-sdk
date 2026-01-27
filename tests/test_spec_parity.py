@@ -49,10 +49,44 @@ def test_spec_serp_time_filter_mapping_matches_python() -> None:
     assert SerpRequest.TIME_FILTER_MAP["year"] == mapping["year"]
 
 
+def test_spec_webunlocker_base_url_aliases() -> None:
+    spec = _load_spec()
+    base_urls = spec["env"]["baseUrls"]
+
+    webunlocker = base_urls["webunlocker"]
+    universalapi = base_urls["universalapi"]
+
+    assert webunlocker["default"] == "https://webunlocker.thordata.com"
+    assert "https://universalapi.thordata.com" in webunlocker.get("aliases", [])
+
+    assert universalapi["default"] == "https://universalapi.thordata.com"
+    assert "https://webunlocker.thordata.com" in universalapi.get("aliases", [])
+
+
+def test_spec_tasks_paths_match_python_sdk_conventions() -> None:
+    spec = _load_spec()
+
+    # endpoints.yaml
+    endpoints = spec["endpoints"]
+    assert endpoints["serp"]["requestPath"] == "/request"
+    assert endpoints["serp"]["builderPath"] == "/builder"
+    assert endpoints["serp"]["videoBuilderPath"] == "/video_builder"
+
+    assert endpoints["webScraper"]["statusPath"] == "/tasks-status"
+    assert endpoints["webScraper"]["downloadPath"] == "/tasks-download"
+    assert endpoints["webScraper"]["listPath"] == "/tasks-list"
+
+    # tasks.yaml
+    tasks = spec["tasks"]
+    assert tasks["builder"]["endpoint"] == "/builder"
+    assert tasks["videoBuilder"]["endpoint"] == "/video_builder"
+    assert tasks["status"]["endpoint"] == "/tasks-status"
+    assert tasks["download"]["endpoint"] == "/tasks-download"
+    assert tasks["list"]["endpoint"] == "/tasks-list"
+
+
 def test_raise_for_code_precedence_payload_code_over_http_status() -> None:
-    # Ensure code=300 is treated as NotCollected even if status_code is 200.
     payload = {"code": 300, "msg": "Not collected"}
     with pytest.raises(Exception) as excinfo:
         raise_for_code("Error", status_code=200, code=300, payload=payload)
-    # type name check to avoid importing specific class here
     assert "NotCollected" in excinfo.value.__class__.__name__

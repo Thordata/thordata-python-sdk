@@ -80,9 +80,11 @@ jobs:
         run: |
           python -m compileall examples
 
-      - name: Run tests with coverage
+      - name: Run tests with coverage (coverage CLI for reliability)
         run: |
-          pytest --cov=thordata --cov-report=xml --cov-report=term-missing
+          python -m coverage run -m pytest -p no:cov -v tests
+          python -m coverage report -m
+          python -m coverage xml
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.11'

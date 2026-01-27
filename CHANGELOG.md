@@ -1,6 +1,33 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [Unreleased]
+
+### Added
+- Complete tools module with 100% API coverage (120+ tools)
+- Quick validation test script (`scripts/acceptance/run_quick_validation.py`)
+- Comprehensive tool coverage matrix documentation
+- Git operations guide for contributors
+- Timeout protection in acceptance tests to prevent hanging
+
+### Changed
+- Merged `ecommerce.py` and `ecommerce_extended.py` into single module
+- Optimized acceptance test scripts with better error handling
+- Updated README with tools usage examples
+- Improved test output formatting (removed emoji for Windows compatibility)
+
+### Fixed
+- Fixed dataclass parameter ordering issues (non-default args before default args)
+- Fixed line length issues in code quality checks
+- Fixed import paths in acceptance test scripts
+- Fixed Windows encoding issues in test output
+
+### Documentation
+- Added comprehensive tool usage examples to README
+- Added Git operations guide
+- Updated tool coverage matrix
+- Enhanced output format alignment documentation
 ## [1.5.0] - 2026-01-21
 
 ### 🚀 Major Architectural Changes

@@ -15,6 +15,7 @@ Exception Hierarchy:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 # =============================================================================
@@ -235,6 +236,46 @@ class ThordataNotCollectedError(ThordataAPIError):
 # =============================================================================
 
 
+def _extract_request_id(payload: Any) -> str | None:
+    if isinstance(payload, Mapping):
+        for key in ("request_id", "requestId", "x_request_id", "x-request-id"):
+            val = payload.get(key)
+            if val is not None:
+                return str(val)
+    return None
+
+
+def _extract_retry_after(payload: Any) -> int | None:
+    if isinstance(payload, Mapping):
+        for key in ("retry_after", "retryAfter", "retry-after"):
+            val = payload.get(key)
+            if isinstance(val, int):
+                return val
+            if isinstance(val, str) and val.isdigit():
+                return int(val)
+    return None
+
+
+def _build_error_message(
+    message: str,
+    *,
+    status_code: int | None,
+    code: int | None,
+    request_id: str | None,
+) -> str:
+    parts: list[str] = [message]
+    meta: list[str] = []
+    if status_code is not None:
+        meta.append(f"http={status_code}")
+    if code is not None and code != status_code:
+        meta.append(f"code={code}")
+    if request_id:
+        meta.append(f"request_id={request_id}")
+    if meta:
+        parts.append("(" + ", ".join(meta) + ")")
+    return " ".join(parts)
+
+
 def raise_for_code(
     message: str,
     *,
@@ -266,49 +307,59 @@ def raise_for_code(
     # Determine the effective error code.
     # Prefer payload `code` when present and not success (200),
     # otherwise fall back to HTTP status when it indicates an error.
+    # Determine the effective error code for routing.
     effective_code: int | None = None
-
     if code is not None and code != 200:
         effective_code = code
-    elif status_code is not None and status_code != 200:
+    elif status_code is not None and status_code >= 400:
         effective_code = status_code
     else:
         effective_code = code if code is not None else status_code
 
+    # Extract additional context from payload
+    final_request_id = request_id or _extract_request_id(payload)
+
+    # Build a consistent, informative error message
+    final_message = _build_error_message(
+        message,
+        status_code=status_code,
+        code=code,
+        request_id=final_request_id,
+    )
+
+    # Prepare common arguments for exception constructors
     kwargs = {
         "status_code": status_code,
         "code": code,
         "payload": payload,
-        "request_id": request_id,
+        "request_id": final_request_id,
     }
 
+    # --- Route to the correct exception class ---
+
     # Not collected (API payload code 300, often retryable, not billed)
-    # Check this FIRST since 300 is in API_CODES, not HTTP_STATUS_CODES
     if effective_code in ThordataNotCollectedError.API_CODES:
-        raise ThordataNotCollectedError(message, **kwargs)
+        raise ThordataNotCollectedError(final_message, **kwargs)
 
-    # Auth errors
+    # Auth errors (401, 403)
     if effective_code in ThordataAuthError.HTTP_STATUS_CODES:
-        raise ThordataAuthError(message, **kwargs)
+        raise ThordataAuthError(final_message, **kwargs)
 
-    # Rate limit errors
+    # Rate limit errors (429, 402)
     if effective_code in ThordataRateLimitError.HTTP_STATUS_CODES:
-        # Try to extract retry_after from payload
-        retry_after = None
-        if isinstance(payload, dict):
-            retry_after = payload.get("retry_after")
-        raise ThordataRateLimitError(message, retry_after=retry_after, **kwargs)
+        retry_after = _extract_retry_after(payload)
+        raise ThordataRateLimitError(final_message, retry_after=retry_after, **kwargs)
 
-    # Server errors
+    # Server errors (5xx)
     if effective_code is not None and 500 <= effective_code < 600:
-        raise ThordataServerError(message, **kwargs)
+        raise ThordataServerError(final_message, **kwargs)
 
-    # Validation errors
+    # Validation errors (400, 422)
     if effective_code in ThordataValidationError.HTTP_STATUS_CODES:
-        raise ThordataValidationError(message, **kwargs)
+        raise ThordataValidationError(final_message, **kwargs)
 
-    # Generic API error
-    raise ThordataAPIError(message, **kwargs)
+    # Fallback to generic API error if no specific match
+    raise ThordataAPIError(final_message, **kwargs)
 
 
 # =============================================================================

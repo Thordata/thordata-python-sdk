@@ -61,6 +61,7 @@ env.bak/
 venv.bak/
 .venv/
 .venv-*/
+!.env.example
 
 # IDE
 .idea/
@@ -89,6 +90,8 @@ Thumbs.db
 
 # Project specific
 *.log
+*.tmp
 secrets.json
 .secrets/
 examples/output/
+artifacts/
