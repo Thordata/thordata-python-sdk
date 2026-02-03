@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.0] - 2026-02-03
+
+### Added
+- **SERP API**: Added support for light JSON format (json=4) output
+  - Support for json=1 (JSON), json=3 (HTML), json=4 (light JSON), json=2 (both)
+- **Web Unlocker**: Added support for multiple output formats simultaneously
+  - Can now request both PNG and HTML output in a single request (e.g., `output_format="png,html"`)
+  - Returns dictionary with all requested formats
+- **Web Unlocker**: Added new parameters support
+  - `follow_redirect`: Control redirect following behavior
+  - `clean_content`: Clean JavaScript/CSS from responses
+  - `headers`: Custom request headers (list format)
+  - `cookies`: Custom cookies (list format)
+- **Web Scraper**: Added `data_format` parameter support
+  - Support for JSON, CSV, and XLSX output formats via `data_format` parameter
+
+### Fixed
+- **URL Encoding**: Fixed URL parameter encoding to match Dashboard format exactly
+  - URLs are now properly decoded to ensure API/SDK submissions match manual Dashboard input
+  - Prevents 404 errors caused by URL encoding differences
+- **JSON Parsing**: Improved JSON response parsing for batch tasks
+  - Better handling of NDJSON (newline-delimited JSON) format
+  - Improved error handling for mixed JSON formats
+- **Type Safety**: Fixed return type annotations for `universal_scrape` methods
+  - Updated return types to include `dict[str, str | bytes]` for multiple format support
+
+### Changed
+- **Web Unlocker API**: `output_format` now accepts string or list (e.g., `"png,html"` or `["png", "html"]`)
+- **Response Handling**: `universal_scrape` methods now return dictionary when multiple formats requested
+
 ## [Unreleased]
 
 ### Added

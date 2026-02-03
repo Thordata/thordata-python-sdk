@@ -8,6 +8,7 @@ import json
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
+from urllib.parse import unquote
 
 from .common import CommonSettings, ThordataBaseConfig
 
@@ -49,6 +50,52 @@ class DataFormat(str, Enum):
     XLSX = "xlsx"
 
 
+def _normalize_url_value(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    # Decode all percent-encoded characters to match Dashboard format
+    # Dashboard expects URLs in their raw/decoded form, not URL-encoded
+    # This ensures API/SDK submissions match manual Dashboard input exactly
+    try:
+        # Check if URL contains any percent-encoded characters
+        if "%" in value:
+            # Fully decode the URL to match Dashboard format
+            decoded = unquote(value)
+            # If decoding changed the value, use decoded version
+            # This handles cases like %26 -> &, %3A -> :, %2F -> /, etc.
+            if decoded != value:
+                return decoded
+    except Exception:
+        # If decoding fails, return original value
+        pass
+    return value
+
+
+def _normalize_parameters(params: dict[str, Any]) -> dict[str, Any]:
+    # All parameter keys that contain URLs and should be normalized
+    # This ensures API/SDK submissions match Dashboard format exactly
+    url_keys = {
+        "url",
+        "domain",
+        "profileurl",
+        "posturl",
+        "seller_url",
+        # Additional URL-related keys that may be used
+        "link",
+        "href",
+        "page_url",
+        "product_url",
+        "category_url",
+    }
+    out: dict[str, Any] = {}
+    for k, v in params.items():
+        if k in url_keys:
+            out[k] = _normalize_url_value(v)
+        else:
+            out[k] = v
+    return out
+
+
 @dataclass
 class ScraperTaskConfig(ThordataBaseConfig):
     file_name: str
@@ -57,13 +104,18 @@ class ScraperTaskConfig(ThordataBaseConfig):
     parameters: dict[str, Any] | list[dict[str, Any]]
     universal_params: dict[str, Any] | None = None
     include_errors: bool = True
+    data_format: DataFormat | str | None = (
+        None  # Support json, csv, xlsx output formats
+    )
 
     def to_payload(self) -> dict[str, Any]:
-        # Handle batch parameters: if list, use as is; if dict, wrap in list
+        # Normalize parameters: decode percent-encoded URLs to reduce API/Dashboard divergence
         if isinstance(self.parameters, list):
-            params_json = json.dumps(self.parameters)
+            normalized_list = [_normalize_parameters(p) for p in self.parameters]
+            params_json = json.dumps(normalized_list)
         else:
-            params_json = json.dumps([self.parameters])
+            normalized_one = _normalize_parameters(self.parameters)
+            params_json = json.dumps([normalized_one])
 
         payload: dict[str, Any] = {
             "file_name": self.file_name,
@@ -74,6 +126,14 @@ class ScraperTaskConfig(ThordataBaseConfig):
         }
         if self.universal_params:
             payload["spider_universal"] = json.dumps(self.universal_params)
+        # Add data_format if specified (for json/csv/xlsx output)
+        if self.data_format:
+            fmt = (
+                self.data_format.value
+                if isinstance(self.data_format, DataFormat)
+                else str(self.data_format).lower()
+            )
+            payload["data_format"] = fmt
         return payload
 
 
@@ -87,7 +147,6 @@ class VideoTaskConfig(ThordataBaseConfig):
     include_errors: bool = True
 
     def to_payload(self) -> dict[str, Any]:
-        # Handle batch parameters
         if isinstance(self.parameters, list):
             params_json = json.dumps(self.parameters)
         else:
@@ -99,13 +158,8 @@ class VideoTaskConfig(ThordataBaseConfig):
             "spider_name": self.spider_name,
             "spider_parameters": params_json,
             "spider_errors": "true" if self.include_errors else "false",
-            # v2.0 Doc explicitly requires 'spider_universal' key for video tasks too sometimes,
-            # but usually it's passed as 'common_settings' or 'spider_universal'.
-            # Sticking to original models.py key logic for now to ensure stability.
             "spider_universal": self.common_settings.to_json(),
         }
-        # Note: If API expects 'common_settings' key specifically, adjust here.
-        # Based on v2 context, video builder often uses spider_universal.
         return payload
 
 

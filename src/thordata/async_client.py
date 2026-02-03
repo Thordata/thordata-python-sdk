@@ -293,28 +293,36 @@ class AsyncThordataClient:
         url: str,
         *,
         js_render: bool = False,
-        output_format: str = "html",
+        output_format: str | list[str] = "html",
         country: str | None = None,
         block_resources: str | None = None,
+        clean_content: str | None = None,
         wait: int | None = None,
         wait_for: str | None = None,
+        follow_redirect: bool | None = None,
+        headers: list[dict[str, str]] | None = None,
+        cookies: list[dict[str, str]] | None = None,
         **kwargs: Any,
-    ) -> str | bytes:
+    ) -> str | bytes | dict[str, str | bytes]:
         request = UniversalScrapeRequest(
             url=url,
             js_render=js_render,
             output_format=output_format,
             country=country,
             block_resources=block_resources,
+            clean_content=clean_content,
             wait=wait,
             wait_for=wait_for,
+            follow_redirect=follow_redirect,
+            headers=headers,
+            cookies=cookies,
             extra_params=kwargs,
         )
         return await self.universal_scrape_advanced(request)
 
     async def universal_scrape_advanced(
         self, request: UniversalScrapeRequest
-    ) -> str | bytes:
+    ) -> str | bytes | dict[str, str | bytes]:
         if not self.scraper_token:
             raise ThordataConfigError("scraper_token required")
         payload = request.to_payload()
@@ -327,15 +335,44 @@ class AsyncThordataClient:
         try:
             resp_json = await response.json()
         except ValueError:
-            if request.output_format.lower() == "png":
-                return await response.read()
-            return await response.text()
+            # If not JSON, return raw content based on format
+            if isinstance(request.output_format, list) or (
+                isinstance(request.output_format, str) and "," in request.output_format
+            ):
+                return {"raw": await response.read()}
+            fmt = (
+                request.output_format.lower()
+                if isinstance(request.output_format, str)
+                else str(request.output_format).lower()
+            )
+            return await response.read() if fmt == "png" else await response.text()
 
         if isinstance(resp_json, dict):
             code = resp_json.get("code")
             if code is not None and code != 200:
                 msg = extract_error_message(resp_json)
                 raise_for_code(f"Universal Error: {msg}", code=code, payload=resp_json)
+
+        # Handle multiple output formats
+        if isinstance(request.output_format, list) or (
+            isinstance(request.output_format, str) and "," in request.output_format
+        ):
+            result: dict[str, str | bytes] = {}
+            formats = (
+                request.output_format
+                if isinstance(request.output_format, list)
+                else [f.strip() for f in request.output_format.split(",")]
+            )
+
+            for fmt in formats:
+                fmt_lower = fmt.lower()
+                if fmt_lower == "html" and "html" in resp_json:
+                    result["html"] = resp_json["html"]
+                elif fmt_lower == "png" and "png" in resp_json:
+                    result["png"] = decode_base64_image(resp_json["png"])
+
+            if result:
+                return result
 
         if "html" in resp_json:
             return resp_json["html"]

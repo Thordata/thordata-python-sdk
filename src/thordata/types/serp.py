@@ -117,7 +117,7 @@ class SerpRequest(ThordataBaseConfig):
     render_js: bool | None = None
     no_cache: bool | None = None
 
-    # Output
+    # Output format: "json" (json=1), "html" (json=3), "light_json" (json=4), or "both" (json=2)
     output_format: str = "json"
 
     # Advanced Google
@@ -155,13 +155,17 @@ class SerpRequest(ThordataBaseConfig):
         }
 
         # JSON output handling
+        # Dashboard mapping: json=1 (json), json=3 (html), json=4 (light json), json=2 (both)
         fmt = self.output_format.lower()
         if fmt == "json":
             payload["json"] = "1"
         elif fmt == "html":
-            pass  # No json param means HTML
+            payload["json"] = "3"
+        elif fmt in ("light_json", "light-json", "lightjson"):
+            payload["json"] = "4"
         elif fmt in ("2", "both", "json+html"):
             payload["json"] = "2"
+        # If no json param is set, default to HTML (legacy behavior)
 
         # Query param handling
         if engine == "yandex":

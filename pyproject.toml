@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "thordata-sdk"
-version = "1.6.0"
+version = "1.7.0"
 description = "The Official Python SDK for Thordata - AI Data Infrastructure & Proxy Network."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -115,6 +115,7 @@ check_untyped_defs = false
 strict_optional = false
 show_error_codes = true
 ignore_missing_imports = true
+follow_imports = "skip"
 
 [[tool.mypy.overrides]]
 module = ["aiohttp.*", "requests.*"]

@@ -390,7 +390,16 @@ def is_retryable_exception(exc: Exception) -> bool:
     try:
         import requests
 
-        if isinstance(exc, (requests.Timeout, requests.ConnectionError)):
+        # requests exposes SSLError under requests.exceptions.SSLError (not requests.SSLError)
+        ssl_error = getattr(getattr(requests, "exceptions", None), "SSLError", None)
+        retryable: tuple[type[BaseException], ...] = (
+            requests.Timeout,
+            requests.ConnectionError,
+        )
+        if ssl_error is not None:
+            retryable = retryable + (ssl_error,)
+
+        if isinstance(exc, retryable):
             return True
     except ImportError:
         pass

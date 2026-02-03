@@ -53,6 +53,7 @@ from .serp_engines import SerpNamespace
 # Import Types (Modernized)
 from .types import (
     CommonSettings,
+    DataFormat,
     ProxyConfig,
     ProxyProduct,
     ProxyServer,
@@ -364,26 +365,36 @@ class ThordataClient:
         url: str,
         *,
         js_render: bool = False,
-        output_format: str = "html",
+        output_format: str | list[str] = "html",
         country: str | None = None,
         block_resources: str | None = None,
+        clean_content: str | None = None,
         wait: int | None = None,
         wait_for: str | None = None,
+        follow_redirect: bool | None = None,
+        headers: list[dict[str, str]] | None = None,
+        cookies: list[dict[str, str]] | None = None,
         **kwargs: Any,
-    ) -> str | bytes:
+    ) -> str | bytes | dict[str, str | bytes]:
         request = UniversalScrapeRequest(
             url=url,
             js_render=js_render,
             output_format=output_format,
             country=country,
             block_resources=block_resources,
+            clean_content=clean_content,
             wait=wait,
             wait_for=wait_for,
+            follow_redirect=follow_redirect,
+            headers=headers,
+            cookies=cookies,
             extra_params=kwargs,
         )
         return self.universal_scrape_advanced(request)
 
-    def universal_scrape_advanced(self, request: UniversalScrapeRequest) -> str | bytes:
+    def universal_scrape_advanced(
+        self, request: UniversalScrapeRequest
+    ) -> str | bytes | dict[str, str | bytes]:
         if not self.scraper_token:
             raise ThordataConfigError("scraper_token required")
 
@@ -648,6 +659,7 @@ class ThordataClient:
         include_errors: bool = True,
         task_type: str = "web",
         common_settings: CommonSettings | None = None,
+        data_format: DataFormat | str | None = None,
     ) -> str:
         import time
 
@@ -671,6 +683,7 @@ class ThordataClient:
                 parameters=parameters,
                 universal_params=universal_params,
                 include_errors=include_errors,
+                data_format=data_format,
             )
             task_id = self.create_scraper_task_advanced(config)
 
@@ -1212,12 +1225,22 @@ class ThordataClient:
     # =========================================================================
 
     def _process_universal_response(
-        self, response: requests.Response, output_format: str
-    ) -> str | bytes:
+        self, response: requests.Response, output_format: str | list[str]
+    ) -> str | bytes | dict[str, str | bytes]:
+        """Process universal scrape response. Returns single value or dict if multiple formats requested."""
         try:
             resp_json = response.json()
         except ValueError:
-            return response.content if output_format.lower() == "png" else response.text
+            # If not JSON, return raw content based on format
+            if isinstance(output_format, list):
+                # Multiple formats requested but got non-JSON response
+                return {"raw": response.content}
+            fmt = (
+                output_format.lower()
+                if isinstance(output_format, str)
+                else str(output_format).lower()
+            )
+            return response.content if fmt == "png" else response.text
 
         if isinstance(resp_json, dict):
             code = resp_json.get("code")
@@ -1225,6 +1248,29 @@ class ThordataClient:
                 msg = extract_error_message(resp_json)
                 raise_for_code(f"Universal Error: {msg}", code=code, payload=resp_json)
 
+        # Handle multiple output formats
+        if isinstance(output_format, list) or (
+            isinstance(output_format, str) and "," in output_format
+        ):
+            result: dict[str, str | bytes] = {}
+            formats = (
+                output_format
+                if isinstance(output_format, list)
+                else [f.strip() for f in output_format.split(",")]
+            )
+
+            for fmt in formats:
+                fmt_lower = fmt.lower()
+                if fmt_lower == "html" and "html" in resp_json:
+                    result["html"] = resp_json["html"]
+                elif fmt_lower == "png" and "png" in resp_json:
+                    result["png"] = decode_base64_image(resp_json["png"])
+
+            # If we got results, return dict; otherwise return single value for backward compatibility
+            if result:
+                return result
+
+        # Single format (backward compatibility)
         if "html" in resp_json:
             return resp_json["html"]
         if "png" in resp_json:
