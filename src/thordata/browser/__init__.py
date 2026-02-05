@@ -6,11 +6,12 @@ Requires optional dependency: pip install thordata[browser]
 
 from __future__ import annotations
 
+from .exceptions import BrowserConnectionError, BrowserError
+
 try:
-    from .exceptions import BrowserConnectionError, BrowserError
     from .session import BrowserSession
 
     __all__ = ["BrowserSession", "BrowserError", "BrowserConnectionError"]
 except ImportError:
-    # Playwright not installed
-    __all__ = []
+    # Playwright not installed - BrowserSession not available
+    __all__ = ["BrowserError", "BrowserConnectionError"]

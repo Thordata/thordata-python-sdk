@@ -12,7 +12,11 @@ except ImportError:
     PLAYWRIGHT_AVAILABLE = False
 
 from thordata import AsyncThordataClient
-from thordata.browser import BrowserConnectionError, BrowserError, BrowserSession
+
+if PLAYWRIGHT_AVAILABLE:
+    from thordata.browser import BrowserConnectionError, BrowserError, BrowserSession
+else:
+    from thordata.browser import BrowserConnectionError, BrowserError
 
 
 @pytest.mark.skipif(not PLAYWRIGHT_AVAILABLE, reason="Playwright not installed")

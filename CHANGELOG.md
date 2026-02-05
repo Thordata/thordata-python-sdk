@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.1] - 2026-02-XX
+
+### Fixed
+- **Browser Optional Dependency**: Fixed test collection failure when Playwright is not installed
+  - `thordata.browser` now always exports `BrowserError` and `BrowserConnectionError`
+  - `BrowserSession` is exported only when Playwright is available
+  - Browser tests avoid importing `BrowserSession` when Playwright is missing
+
 ## [1.8.0] - 2026-02-XX
 
 ### Added
