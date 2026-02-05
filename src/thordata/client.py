@@ -309,6 +309,7 @@ class ThordataClient:
         render_js: bool | None = None,
         no_cache: bool | None = None,
         output_format: str = "json",
+        ai_overview: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
         engine_str = engine.value if isinstance(engine, Engine) else engine.lower()
@@ -324,6 +325,7 @@ class ThordataClient:
             render_js=render_js,
             no_cache=no_cache,
             output_format=output_format,
+            ai_overview=ai_overview,
             extra_params=kwargs,
         )
         return self.serp_search_advanced(request)
@@ -396,7 +398,7 @@ class ThordataClient:
         self, request: UniversalScrapeRequest
     ) -> str | bytes | dict[str, str | bytes]:
         if not self.scraper_token:
-            raise ThordataConfigError("scraper_token required")
+            raise ThordataConfigError("scraper_token is required for Universal API")
 
         payload = request.to_payload()
         headers = build_auth_headers(self.scraper_token, mode=self._auth_mode)

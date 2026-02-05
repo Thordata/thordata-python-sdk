@@ -244,6 +244,7 @@ class AsyncThordataClient:
         render_js: bool | None = None,
         no_cache: bool | None = None,
         output_format: str = "json",
+        ai_overview: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
         engine_str = engine.value if isinstance(engine, Engine) else engine.lower()
@@ -258,13 +259,14 @@ class AsyncThordataClient:
             render_js=render_js,
             no_cache=no_cache,
             output_format=output_format,
+            ai_overview=ai_overview,
             extra_params=kwargs,
         )
         return await self.serp_search_advanced(request)
 
     async def serp_search_advanced(self, request: SerpRequest) -> dict[str, Any]:
         if not self.scraper_token:
-            raise ThordataConfigError("scraper_token required")
+            raise ThordataConfigError("scraper_token is required for SERP API")
         payload = request.to_payload()
         headers = build_auth_headers(self.scraper_token, mode=self._auth_mode)
         logger.info(f"Async SERP: {request.engine} - {request.query}")
@@ -324,7 +326,7 @@ class AsyncThordataClient:
         self, request: UniversalScrapeRequest
     ) -> str | bytes | dict[str, str | bytes]:
         if not self.scraper_token:
-            raise ThordataConfigError("scraper_token required")
+            raise ThordataConfigError("scraper_token is required for Universal API")
         payload = request.to_payload()
         headers = build_auth_headers(self.scraper_token, mode=self._auth_mode)
 
@@ -448,7 +450,7 @@ class AsyncThordataClient:
     async def create_scraper_task_advanced(self, config: ScraperTaskConfig) -> str:
         self._require_public_credentials()
         if not self.scraper_token:
-            raise ThordataConfigError("scraper_token required")
+            raise ThordataConfigError("scraper_token is required for Task Builder")
         payload = config.to_payload()
         headers = build_builder_headers(
             self.scraper_token, str(self.public_token), str(self.public_key)
@@ -486,7 +488,9 @@ class AsyncThordataClient:
     async def create_video_task_advanced(self, config: VideoTaskConfig) -> str:
         self._require_public_credentials()
         if not self.scraper_token:
-            raise ThordataConfigError("scraper_token required")
+            raise ThordataConfigError(
+                "scraper_token is required for Video Task Builder"
+            )
         payload = config.to_payload()
         headers = build_builder_headers(
             self.scraper_token, str(self.public_token), str(self.public_key)
@@ -1104,3 +1108,28 @@ class AsyncThordataClient:
         safe_user = quote(final_user, safe="")
         safe_pass = quote(pwd, safe="")
         return f"wss://{safe_user}:{safe_pass}@ws-browser.thordata.com"
+
+    @property
+    def browser(self):
+        """Get a browser session for automation.
+
+        Requires playwright: pip install thordata[browser]
+
+        Returns:
+            BrowserSession instance
+
+        Example:
+            async with AsyncThordataClient() as client:
+                session = client.browser
+                await session.navigate("https://example.com")
+                snapshot = await session.snapshot()
+        """
+        try:
+            from .browser import BrowserSession
+
+            return BrowserSession(self)
+        except ImportError as e:
+            raise ImportError(
+                "Playwright is required for browser automation. "
+                "Install it with: pip install thordata[browser]"
+            ) from e

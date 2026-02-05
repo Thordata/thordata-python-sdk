@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.0] - 2026-02-XX
+
+### Added
+- **Browser Automation**: Complete browser automation module with Playwright integration
+  - New `BrowserSession` class for domain-scoped browser sessions
+  - Methods: `navigate()`, `snapshot()`, `click_ref()`, `type_ref()`, `screenshot_page()`, `get_html()`, `scroll()`, `go_back()`
+  - Access via `AsyncThordataClient.browser` property
+  - Optional dependency: `pip install thordata[browser]`
+- **SERP API**: Added `ai_overview` parameter support
+  - Enable AI Overview for Google search results
+  - Only supported for `engine=google`
+  - Default: `False`
+- **SERP API**: Added 9 missing Google engine variants
+  - `google_ai_mode`, `google_play_product`, `google_play_games`, `google_play_movies`, `google_play_books`
+  - `google_scholar_cite`, `google_scholar_author`, `google_finance_markets`, `google_patents_details`
+
+### Fixed
+- **SERP API**: Deprecated `both` output format (json=2) - Dashboard does not support this format
+  - Added deprecation warning when using `both` format
+  - Updated documentation to reflect Dashboard support
+- **Error Messages**: Unified error messages across sync and async clients
+  - All error messages now use consistent format: "scraper_token is required for [API Name]"
+
+### Changed
+- **SERP API**: `ai_overview` parameter validation - raises `ValueError` if used with non-Google engines
+- **Engine Enum**: Marked `BAIDU` engine as deprecated (not supported by Dashboard)
+
 ## [1.7.0] - 2026-02-03
 
 ### Added

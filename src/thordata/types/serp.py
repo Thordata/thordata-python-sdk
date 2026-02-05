@@ -14,6 +14,7 @@ from .common import ThordataBaseConfig
 class Engine(str, Enum):
     # Google
     GOOGLE = "google"
+    GOOGLE_AI_MODE = "google_ai_mode"
     GOOGLE_NEWS = "google_news"
     GOOGLE_SHOPPING = "google_shopping"
     GOOGLE_VIDEOS = "google_videos"
@@ -21,10 +22,18 @@ class Engine(str, Enum):
     GOOGLE_MAPS = "google_maps"
     GOOGLE_JOBS = "google_jobs"
     GOOGLE_PLAY = "google_play"
+    GOOGLE_PLAY_PRODUCT = "google_play_product"
+    GOOGLE_PLAY_GAMES = "google_play_games"
+    GOOGLE_PLAY_MOVIES = "google_play_movies"
+    GOOGLE_PLAY_BOOKS = "google_play_books"
     GOOGLE_TRENDS = "google_trends"
     GOOGLE_SCHOLAR = "google_scholar"
+    GOOGLE_SCHOLAR_CITE = "google_scholar_cite"
+    GOOGLE_SCHOLAR_AUTHOR = "google_scholar_author"
     GOOGLE_PATENTS = "google_patents"
+    GOOGLE_PATENTS_DETAILS = "google_patents_details"
     GOOGLE_FINANCE = "google_finance"
+    GOOGLE_FINANCE_MARKETS = "google_finance_markets"
     GOOGLE_FLIGHTS = "google_flights"
     GOOGLE_LENS = "google_lens"
     GOOGLE_HOTELS = "google_hotels"
@@ -40,7 +49,7 @@ class Engine(str, Enum):
     # Others
     YANDEX = "yandex"
     DUCKDUCKGO = "duckduckgo"
-    BAIDU = "baidu"
+    BAIDU = "baidu"  # Deprecated: Not supported by Dashboard
 
     # Legacy / Compatibility Aliases
     GOOGLE_SEARCH = "google_search"
@@ -117,12 +126,14 @@ class SerpRequest(ThordataBaseConfig):
     render_js: bool | None = None
     no_cache: bool | None = None
 
-    # Output format: "json" (json=1), "html" (json=3), "light_json" (json=4), or "both" (json=2)
+    # Output format: "json" (json=1), "html" (json=3), "light_json" (json=4)
+    # Note: "both" (json=2) format is not supported by Dashboard
     output_format: str = "json"
 
     # Advanced Google
     ludocid: str | None = None
     kgmid: str | None = None
+    ai_overview: bool = False  # Only supported for engine=google
 
     # Pass-through for any other param
     extra_params: dict[str, Any] = field(default_factory=dict)
@@ -155,7 +166,8 @@ class SerpRequest(ThordataBaseConfig):
         }
 
         # JSON output handling
-        # Dashboard mapping: json=1 (json), json=3 (html), json=4 (light json), json=2 (both)
+        # Dashboard mapping: json=1 (json), json=3 (html), json=4 (light json)
+        # Note: json=2 (both) format is not supported by Dashboard
         fmt = self.output_format.lower()
         if fmt == "json":
             payload["json"] = "1"
@@ -164,6 +176,14 @@ class SerpRequest(ThordataBaseConfig):
         elif fmt in ("light_json", "light-json", "lightjson"):
             payload["json"] = "4"
         elif fmt in ("2", "both", "json+html"):
+            import warnings
+
+            warnings.warn(
+                "The 'both' output format (json=2) is not supported by Dashboard. "
+                "Use 'json' or 'html' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             payload["json"] = "2"
         # If no json param is set, default to HTML (legacy behavior)
 
@@ -222,6 +242,14 @@ class SerpRequest(ThordataBaseConfig):
             payload["ludocid"] = self.ludocid
         if self.kgmid:
             payload["kgmid"] = self.kgmid
+
+        # AI Overview (only for Google engine)
+        if self.ai_overview:
+            if engine != "google":
+                raise ValueError(
+                    "ai_overview parameter is only supported for engine=google"
+                )
+            payload["ai_overview"] = "true"
 
         # Merge extras
         payload.update(self.extra_params)

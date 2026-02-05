@@ -127,7 +127,9 @@ async def test_async_missing_scraper_token():
     async with client:
         # 3. Method call should fail
         # Updated match string to match actual code in async_client.py
-        with pytest.raises(ThordataConfigError, match="scraper_token required"):
+        with pytest.raises(
+            ThordataConfigError, match="scraper_token is required for SERP API"
+        ):
             await client.serp_search("test")
 
 
