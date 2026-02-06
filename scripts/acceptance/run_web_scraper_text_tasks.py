@@ -261,9 +261,9 @@ def main() -> bool:
 
     print("\n--- Web Scraper Text Summary ---")
     if all_ok:
-        print("✅ Text tasks passed.")
+        print("Text tasks passed.")
     else:
-        print("❌ Text tasks failed (strict). See artifacts for details.")
+        print("Text tasks failed (strict). See artifacts for details.")
 
     return all_ok
 

@@ -243,6 +243,112 @@ class TestClientWebScraperTaskAPI:
         assert result == "https://result.url"
 
 
+class TestClientWebScraperTools:
+    """Discovery and convenience helpers for Web Scraper tools."""
+
+    @pytest.fixture
+    def client(self):
+        return ThordataClient(
+            scraper_token="st",
+            public_token="pt",
+            public_key="pk",
+        )
+
+    def test_list_tools_and_groups_basic(self, client):
+        out = client.list_tools()
+        assert "tools" in out and "meta" in out
+        assert isinstance(out["tools"], list)
+        groups = client.get_tool_groups()
+        assert "groups" in groups and "total" in groups
+
+    def test_search_tools_keyword(self, client):
+        out = client.search_tools("google")
+        assert "tools" in out and "meta" in out
+        # We don't assert specific tools here, just that it returns a list
+        assert isinstance(out["tools"], list)
+
+    def test_run_tool_by_key_uses_underlying_run_tool(self, client, monkeypatch):
+        calls: list[dict] = []
+
+        def _fake_run_tool(tool_request, file_name=None, universal_params=None):
+            calls.append(
+                {
+                    "cls": type(tool_request),
+                    "file_name": file_name,
+                    "universal_params": universal_params,
+                }
+            )
+            return "task-id-123"
+
+        monkeypatch.setattr(client, "run_tool", _fake_run_tool)
+
+        task_id = client.run_tool_by_key(
+            "ecommerce.amazon_product_by-url",
+            {"url": "https://example.com"},
+            file_name="f.json",
+            universal_params={"country": "us"},
+        )
+        assert task_id == "task-id-123"
+        assert len(calls) == 1
+        assert calls[0]["file_name"] == "f.json"
+        assert calls[0]["universal_params"] == {"country": "us"}
+
+    def test_run_tools_batch_validation_and_ok(self, client, monkeypatch):
+        created: list[str] = []
+
+        def _fake_run_tool_by_key(tool, params, file_name=None, universal_params=None):
+            created.append(tool)
+            return f"tid-{len(created)}"
+
+        monkeypatch.setattr(client, "run_tool_by_key", _fake_run_tool_by_key)
+
+        requests = [
+            {
+                "tool": "ecommerce.amazon_product_by-url",
+                "params": {"url": "https://example.com/1"},
+            },
+            {
+                "tool": "ecommerce.amazon_product_by-url",
+                "params": {"url": "https://example.com/2"},
+                "file_name": "f2.json",
+            },
+            {
+                # Missing tool key should yield validation error
+                "params": {"url": "https://example.com/3"},
+            },
+        ]
+        results = client.run_tools_batch(requests, concurrency=2)
+        assert len(results) == 3
+        # First two should be ok
+        assert results[0]["ok"] is True and results[0]["task_id"] == "tid-1"
+        assert results[1]["ok"] is True and results[1]["task_id"] == "tid-2"
+        # Third should be validation error
+        assert results[2]["ok"] is False
+        assert results[2]["error"]["type"] == "validation_error"
+
+
+class TestClientUniversalBatch:
+    """Universal Scrape batch helper."""
+
+    @pytest.fixture
+    def client(self):
+        return ThordataClient(scraper_token="st")
+
+    def test_universal_scrape_batch_mixed_requests(self, client, monkeypatch):
+        # Patch advanced call to avoid real HTTP
+        def _fake_universal_adv(req: UniversalScrapeRequest):
+            return f"HTML for {req.url}"
+
+        monkeypatch.setattr(client, "universal_scrape_advanced", _fake_universal_adv)
+
+        req_obj = UniversalScrapeRequest(url="https://example.com/1")
+        req_dict = {"url": "https://example.com/2", "js_render": True}
+        results = client.universal_scrape_batch([req_obj, req_dict], concurrency=2)
+        assert len(results) == 2
+        assert results[0]["ok"] and results[0]["output"].startswith("HTML for")
+        assert results[1]["ok"] and results[1]["output"].startswith("HTML for")
+
+
 class TestClientAccountAndUsage:
     """Account, usage stats, traffic and wallet balance, proxy user usage."""
 

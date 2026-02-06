@@ -183,9 +183,9 @@ def main() -> bool:
 
     print("\n--- Web Scraper Video Summary ---")
     if all_ok:
-        print("✅ Video tasks passed.")
+        print("Video tasks passed.")
     else:
-        print("❌ Video tasks failed (strict). See artifacts for details.")
+        print("Video tasks failed (strict). See artifacts for details.")
 
     return all_ok
 

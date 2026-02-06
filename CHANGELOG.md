@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.2] - 2026-02-06
+
+### Fixed
+- Code quality cleanup for Browser API examples and environment helpers.
+- Modernized internal type hints and tooling helpers to satisfy Ruff/Mypy rules.
+
 ## [1.8.1] - 2026-02-XX
 
 ### Fixed

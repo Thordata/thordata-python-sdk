@@ -5,7 +5,7 @@
 
 Thordata Web Unlocker (name on Dashboard) corresponds to the **Universal Scraping API** in the SDK, with the underlying request endpoint:
 
-- `https://universalapi.thordata.com/request`
+- `https://webunlocker.thordata.com/request`
 
 In the Python SDK, accessed through the following interfaces:
 

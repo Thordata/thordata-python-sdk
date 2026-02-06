@@ -60,9 +60,9 @@ def main() -> bool:
 
     print("\n--- Whitelist Summary ---")
     if all_ok:
-        print("✅ Whitelist read-only check passed.")
+        print("Whitelist read-only check passed.")
     else:
-        print("❌ Whitelist read-only check failed.")
+        print("Whitelist read-only check failed.")
 
     return all_ok
 

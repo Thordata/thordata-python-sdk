@@ -32,6 +32,9 @@ from .enums import (
     TimeRange,
 )
 
+# Env helpers (optional, no side effects unless called)
+from .env import load_env_file
+
 # Exceptions
 from .exceptions import (
     ThordataAPIError,
@@ -112,4 +115,5 @@ __all__ = [
     "ThordataValidationError",
     "ThordataNotCollectedError",
     "RetryConfig",
+    "load_env_file",
 ]

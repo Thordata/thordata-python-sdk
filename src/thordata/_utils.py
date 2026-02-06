@@ -15,6 +15,73 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def html_to_markdown(html: str, max_length: int | None = None) -> str:
+    """
+    Convert HTML to clean Markdown text.
+
+    Args:
+        html: HTML content to convert
+        max_length: Optional maximum length to truncate (None = no truncation)
+
+    Returns:
+        Cleaned Markdown text
+    """
+    try:
+        # Try markdownify first (better quality)
+        try:
+            from markdownify import markdownify as md
+
+            text = md(
+                html,
+                heading_style="ATX",
+                strip=["script", "style", "noscript", "nav", "footer", "iframe", "svg"],
+            )
+        except ImportError:
+            # Fallback to html2text
+            import html2text
+
+            h = html2text.HTML2Text()
+            h.ignore_links = False
+            h.ignore_images = False
+            text = h.handle(html)
+
+        # Clean up whitespace
+        lines = [line.rstrip() for line in text.splitlines()]
+        text = "\n".join(line for line in lines if line)
+
+        if max_length and len(text) > max_length:
+            text = (
+                text[:max_length]
+                + f"\n\n... [Content Truncated, original length: {len(text)} chars]"
+            )
+
+        return text
+    except Exception as e:
+        logger.warning(f"Failed to convert HTML to Markdown: {e}")
+        # Return a basic text extraction as fallback
+        import re
+
+        # Remove script and style tags
+        text = re.sub(
+            r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.IGNORECASE
+        )
+        text = re.sub(
+            r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.IGNORECASE
+        )
+        # Remove HTML tags
+        text = re.sub(r"<[^>]+>", "", text)
+        # Clean whitespace
+        text = " ".join(text.split())
+
+        if max_length and len(text) > max_length:
+            text = (
+                text[:max_length]
+                + f"\n\n... [Content Truncated, original length: {len(text)} chars]"
+            )
+
+        return text
+
+
 def parse_json_response(data: Any) -> Any:
     """
     Parse a response that might be double-encoded JSON.

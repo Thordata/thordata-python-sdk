@@ -333,10 +333,10 @@ def main() -> bool:
 
     print("\n--- Proxy Connectivity Summary ---")
     if all_ok:
-        print("✅ Proxy connectivity passed.")
+        print("Proxy connectivity passed.")
     else:
         print(
-            "❌ Proxy connectivity failed for one or more products. See artifacts for details."
+            "Proxy connectivity failed for one or more products. See artifacts for details."
         )
 
     return all_ok

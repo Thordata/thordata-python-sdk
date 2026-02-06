@@ -73,22 +73,22 @@ async def scrape_amazon_products(keyword: str = "thinkpad") -> list[dict]:
 
             # Navigate
             url = f"https://www.amazon.com/s?k={keyword}"
-            logger.info(f"🧭 Navigating to: {url}")
+            logger.info(f"[NAV] Navigating to: {url}")
             await page.goto(url, wait_until="domcontentloaded")
 
             # Handling Anti-bot / Captcha is done automatically by the browser,
             # but we wait for the content container to be sure.
             selector = '[data-component-type="s-search-result"]'
-            logger.info("⏳ Waiting for product list...")
+            logger.info("[WAIT] Waiting for product list...")
             try:
                 await page.wait_for_selector(selector, timeout=30000)
             except Exception:
-                logger.warning("⚠️ Selector timeout. Taking screenshot...")
+                logger.warning("[WARN] Selector timeout. Taking screenshot...")
                 await page.screenshot(path="amazon_error.png")
                 raise
 
             # Extract Data
-            logger.info("📄 Parsing results...")
+            logger.info("[PARSE] Parsing results...")
             results = await page.evaluate(f"""() => {{
                 const items = Array.from(document.querySelectorAll('{selector}'));
                 return items.map(item => {{
@@ -106,15 +106,15 @@ async def scrape_amazon_products(keyword: str = "thinkpad") -> list[dict]:
                 }}).filter(i => i !== null);
             }}""")
 
-            logger.info(f"🎉 Found {len(results)} products")
+            logger.info(f"[OK] Found {len(results)} products")
             for idx, item in enumerate(results[:5], 1):
                 logger.info(f"   {idx}. {item['title'][:50]}... | {item['price']}")
 
         except Exception as e:
-            logger.error(f"❌ Browser Automation Failed: {e}")
+            logger.error(f"[FAIL] Browser Automation Failed: {e}")
         finally:
             await browser.close()
-            logger.info("🔒 Browser closed")
+            logger.info("[CLOSE] Browser closed")
 
     return results
 

@@ -34,10 +34,12 @@ def parse_upstream_proxy() -> dict[str, Any] | None:
     parsed = urlparse(upstream_url)
     scheme = (parsed.scheme or "").lower()
 
-    # Normalize scheme
+    # Normalize scheme - preserve https for TLS connections (e.g., Clash port 7899)
     if scheme in ("socks5", "socks5h"):
         scheme = "socks5"
-    elif scheme in ("http", "https"):
+    elif scheme == "https":
+        scheme = "https"  # Keep https for TLS-wrapped CONNECT
+    elif scheme == "http":
         scheme = "http"
     else:
         return None
@@ -45,7 +47,7 @@ def parse_upstream_proxy() -> dict[str, Any] | None:
     return {
         "scheme": scheme,
         "host": parsed.hostname or "127.0.0.1",
-        "port": parsed.port or 7890,
+        "port": parsed.port or (7899 if scheme == "https" else 7890),
         "username": parsed.username,
         "password": parsed.password,
     }
@@ -68,6 +70,8 @@ class UpstreamProxySocketFactory:
 
         if scheme == "socks5":
             return self._create_socks_connection(address, timeout)
+        elif scheme == "https":
+            return self._create_https_tunnel(address, timeout)
         else:
             return self._create_http_tunnel(address, timeout)
 
@@ -92,6 +96,58 @@ class UpstreamProxySocketFactory:
         except Exception:
             sock.close()
             raise
+        return sock
+
+    def _create_https_tunnel(
+        self, address: tuple[str, int], timeout: float
+    ) -> socket.socket:
+        """Create HTTPS tunnel (TLS-wrapped CONNECT) for upstream proxy like Clash port 7899."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+
+        try:
+            # 1. Connect to Upstream HTTPS proxy
+            sock.connect((self.config["host"], self.config["port"]))
+
+            # 2. Wrap with TLS
+            ctx = ssl.create_default_context()
+            sock = ctx.wrap_socket(sock, server_hostname=self.config["host"])
+
+            # 3. Send CONNECT over TLS
+            target_host, target_port = address
+            connect_req = f"CONNECT {target_host}:{target_port} HTTP/1.1\r\n"
+            connect_req += f"Host: {target_host}:{target_port}\r\n"
+
+            if self.config.get("username"):
+                creds = f"{self.config['username']}:{self.config.get('password','')}"
+                b64_creds = base64.b64encode(creds.encode()).decode()
+                connect_req += f"Proxy-Authorization: Basic {b64_creds}\r\n"
+
+            connect_req += "\r\n"
+            sock.sendall(connect_req.encode())
+
+            # 4. Read Response (Byte by byte to avoid over-reading)
+            resp = b""
+            while b"\r\n\r\n" not in resp:
+                chunk = sock.recv(1)
+                if not chunk:
+                    raise ConnectionError(
+                        "Upstream HTTPS proxy closed connection during CONNECT"
+                    )
+                resp += chunk
+
+            # Fix: Decode bytes safely for string formatting
+            status_line = resp.split(b"\r\n")[0]
+            if b"200" not in status_line:
+                status_str = status_line.decode("utf-8", errors="replace")
+                raise ConnectionError(
+                    f"Upstream HTTPS proxy CONNECT failed: {status_str}"
+                )
+
+        except Exception:
+            sock.close()
+            raise
+
         return sock
 
     def _create_http_tunnel(

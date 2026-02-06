@@ -18,11 +18,12 @@ class UniversalScrapeRequest(ThordataBaseConfig):
     output_format: str | list[str] = (
         "html"  # 'html', 'png', or ['png', 'html'] for both
     )
+    header: bool | None = None  # From docs, controls inclusion of response headers
     country: str | None = None
     block_resources: str | None = None  # 'script,image,video'
     clean_content: str | None = None  # 'js,css'
-    wait: int | None = None  # ms
-    wait_for: str | None = None  # selector
+    wait: int | None = None  # Wait time in milliseconds (ms). Maximum: 100000 ms
+    wait_for: str | None = None  # CSS selector to wait for
     follow_redirect: bool | None = None  # Follow redirects
 
     # Headers/Cookies must be serialized to JSON in payload
@@ -61,13 +62,9 @@ class UniversalScrapeRequest(ThordataBaseConfig):
             "js_render": "True" if self.js_render else "False",
         }
 
-        # Handle output format: support single or multiple formats (e.g., "png,html")
+        # Handle output format (maps to 'type' parameter)
         if hasattr(self, "_output_formats") and self._output_formats:
-            if len(self._output_formats) == 1:
-                payload["type"] = self._output_formats[0]
-            else:
-                # Multiple formats: join with comma (e.g., "png,html")
-                payload["type"] = ",".join(self._output_formats)
+            payload["type"] = ",".join(self._output_formats)
         else:
             # Fallback for backward compatibility
             if isinstance(self.output_format, str):
@@ -75,6 +72,8 @@ class UniversalScrapeRequest(ThordataBaseConfig):
             else:
                 payload["type"] = ",".join([str(f).lower() for f in self.output_format])
 
+        if self.header is not None:
+            payload["header"] = "True" if self.header else "False"
         if self.country:
             payload["country"] = self.country.lower()
         if self.block_resources:

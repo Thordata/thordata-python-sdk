@@ -281,6 +281,96 @@ async def test_async_get_wallet_balance(async_client_coverage):
     assert bal == 99.99
 
 
+async def test_async_list_tools_and_groups(async_client_coverage):
+    """Async tool discovery helpers should return structured metadata."""
+    client = async_client_coverage
+    out = await client.list_tools()
+    assert "tools" in out and "meta" in out
+    groups = await client.get_tool_groups()
+    assert "groups" in groups and "total" in groups
+
+
+async def test_async_run_tool_by_key_uses_underlying_run_tool(
+    async_client_coverage, monkeypatch
+):
+    client = async_client_coverage
+    calls: list[dict] = []
+
+    async def _fake_run_tool(tool_request, file_name=None, universal_params=None):
+        calls.append(
+            {
+                "cls": type(tool_request),
+                "file_name": file_name,
+                "universal_params": universal_params,
+            }
+        )
+        return "task-id-async"
+
+    monkeypatch.setattr(client, "run_tool", _fake_run_tool)
+
+    task_id = await client.run_tool_by_key(
+        "ecommerce.amazon_product_by-url",
+        {"url": "https://example.com"},
+        file_name="async.json",
+        universal_params={"country": "us"},
+    )
+    assert task_id == "task-id-async"
+    assert len(calls) == 1
+    assert calls[0]["file_name"] == "async.json"
+    assert calls[0]["universal_params"] == {"country": "us"}
+
+
+async def test_async_run_tools_batch(async_client_coverage, monkeypatch):
+    client = async_client_coverage
+    created: list[str] = []
+
+    async def _fake_run_tool_by_key(
+        tool, params, file_name=None, universal_params=None
+    ):
+        created.append(tool)
+        return f"atid-{len(created)}"
+
+    monkeypatch.setattr(client, "run_tool_by_key", _fake_run_tool_by_key)
+
+    requests = [
+        {
+            "tool": "ecommerce.amazon_product_by-url",
+            "params": {"url": "https://example.com/1"},
+        },
+        {
+            "tool": "ecommerce.amazon_product_by-url",
+            "params": {"url": "https://example.com/2"},
+        },
+        {
+            # Invalid params type
+            "tool": "ecommerce.amazon_product_by-url",
+            "params": "not-a-dict",
+        },
+    ]
+    results = await client.run_tools_batch(requests, concurrency=2)
+    assert len(results) == 3
+    assert results[0]["ok"] is True and results[0]["task_id"] == "atid-1"
+    assert results[1]["ok"] is True and results[1]["task_id"] == "atid-2"
+    assert results[2]["ok"] is False
+    assert results[2]["error"]["type"] == "validation_error"
+
+
+async def test_async_universal_scrape_batch(async_client_coverage, monkeypatch):
+    client = async_client_coverage
+
+    async def _fake_universal_adv(req: UniversalScrapeRequest):
+        return f"HTML for {req.url}"
+
+    monkeypatch.setattr(client, "universal_scrape_advanced", _fake_universal_adv)
+
+    req_obj = UniversalScrapeRequest(url="https://example.com/1")
+    req_dict = {"url": "https://example.com/2", "js_render": True}
+    results = await client.universal_scrape_batch([req_obj, req_dict], concurrency=2)
+    assert len(results) == 2
+    assert results[0]["ok"] and results[0]["output"].startswith("HTML for")
+    assert results[1]["ok"] and results[1]["output"].startswith("HTML for")
+
+
 async def test_async_list_proxy_users(async_client_coverage):
     client = async_client_coverage
     mock_resp = _async_response_with_json(

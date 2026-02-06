@@ -84,9 +84,9 @@ def main() -> bool:
 
     print("\n--- Universal Summary ---")
     if all_ok:
-        print("✅ Universal scrape passed.")
+        print("Universal scrape passed.")
     else:
-        print(f"❌ Universal scrape failed. Last error: {last_err}")
+        print(f"Universal scrape failed. Last error: {last_err}")
 
     return all_ok
 

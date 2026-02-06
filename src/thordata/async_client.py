@@ -16,6 +16,19 @@ from urllib.parse import quote
 
 import aiohttp
 
+from ._tools_registry import (
+    get_tool_class_by_key as _get_tool_class_by_key,
+)
+from ._tools_registry import (
+    get_tool_info as _get_tool_info,
+)
+from ._tools_registry import (
+    list_tools_metadata as _list_tools_metadata,
+)
+from ._tools_registry import (
+    resolve_tool_key as _resolve_tool_key,
+)
+
 # Import Legacy/Compat
 from ._utils import (
     build_auth_headers,
@@ -62,7 +75,7 @@ class AsyncThordataClient:
 
     # API Endpoints
     BASE_URL = "https://scraperapi.thordata.com"
-    UNIVERSAL_URL = "https://universalapi.thordata.com"
+    UNIVERSAL_URL = "https://webunlocker.thordata.com"
     API_URL = "https://openapi.thordata.com/api/web-scraper-api"
     LOCATIONS_URL = "https://openapi.thordata.com/api/locations"
 
@@ -212,12 +225,14 @@ class AsyncThordataClient:
         if proxy_config is None:
             raise ThordataConfigError("Proxy credentials are missing.")
 
-        # Restore strict check for aiohttp HTTPS proxy limitation
+        # aiohttp has limited support for 'https://' style upstream proxies.
+        # For such cases, the sync ThordataClient (requests-based) is recommended.
         if getattr(proxy_config, "protocol", "http").lower() == "https":
             raise ThordataConfigError(
-                "Proxy Network requires an HTTPS proxy endpoint. "
                 "aiohttp support for 'https://' proxies is limited. "
-                "Please use ThordataClient.get/post (sync client) for Proxy Network requests."
+                "AsyncThordataClient currently does not support 'https://' upstream proxies. "
+                "Please either use an 'http://' proxy endpoint, or switch to "
+                "ThordataClient.get/post (sync client) for Proxy Network requests."
             )
 
         proxy_url, proxy_auth = proxy_config.to_aiohttp_config()
@@ -290,6 +305,78 @@ class AsyncThordataClient:
         text = await response.text()
         return {"html": text}
 
+    async def serp_batch_search(
+        self,
+        requests: list[SerpRequest | dict[str, Any]],
+        *,
+        concurrency: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Run multiple SERP queries concurrently (async).
+
+        Args:
+            requests: List of SerpRequest objects or dicts with query parameters
+            concurrency: Maximum number of concurrent requests (1-20)
+
+        Returns:
+            List of results, each containing 'index', 'ok', 'query', and 'output' or 'error'
+        """
+        import asyncio
+
+        if concurrency < 1:
+            concurrency = 1
+        if concurrency > 20:
+            concurrency = 20
+
+        sem = asyncio.Semaphore(concurrency)
+
+        async def _one(i: int, req: SerpRequest | dict[str, Any]) -> dict[str, Any]:
+            try:
+                if isinstance(req, dict):
+                    # Convert dict to SerpRequest
+                    query = str(req.get("query", ""))
+                    if not query:
+                        return {
+                            "index": i,
+                            "ok": False,
+                            "error": {
+                                "type": "validation_error",
+                                "message": "Missing query",
+                            },
+                        }
+                    serp_req = SerpRequest(
+                        query=query,
+                        engine=req.get("engine", "google"),
+                        num=req.get("num", 10),
+                        country=req.get("country"),
+                        language=req.get("language"),
+                        search_type=req.get("search_type"),
+                        device=req.get("device"),
+                        render_js=req.get("render_js"),
+                        no_cache=req.get("no_cache"),
+                        output_format=req.get("output_format", "json"),
+                        ai_overview=req.get("ai_overview", False),
+                        extra_params=req.get("extra_params", {}),
+                    )
+                else:
+                    serp_req = req
+
+                async with sem:
+                    data = await self.serp_search_advanced(serp_req)
+                return {"index": i, "ok": True, "query": serp_req.query, "output": data}
+            except Exception as e:
+                return {
+                    "index": i,
+                    "ok": False,
+                    "error": {"type": type(e).__name__, "message": str(e)},
+                }
+
+        results = await asyncio.gather(
+            *[_one(i, req) for i, req in enumerate(requests)]
+        )
+        # Sort by index to maintain order
+        results.sort(key=lambda x: x["index"])
+        return results
+
     async def universal_scrape(
         self,
         url: str,
@@ -299,8 +386,8 @@ class AsyncThordataClient:
         country: str | None = None,
         block_resources: str | None = None,
         clean_content: str | None = None,
-        wait: int | None = None,
-        wait_for: str | None = None,
+        wait: int | None = None,  # Wait time in milliseconds (ms). Maximum: 100000 ms
+        wait_for: str | None = None,  # CSS selector to wait for
         follow_redirect: bool | None = None,
         headers: list[dict[str, str]] | None = None,
         cookies: list[dict[str, str]] | None = None,
@@ -321,6 +408,48 @@ class AsyncThordataClient:
             extra_params=kwargs,
         )
         return await self.universal_scrape_advanced(request)
+
+    async def universal_scrape_markdown(
+        self,
+        url: str,
+        *,
+        js_render: bool = True,
+        wait: int | None = None,  # Wait time in milliseconds (ms)
+        max_chars: int = 20000,
+        country: str | None = None,
+        block_resources: str | None = None,
+        wait_for: str | None = None,
+        **kwargs: Any,
+    ) -> str:
+        """Fetch a URL via Universal Scrape and return cleaned Markdown text (async).
+
+        Args:
+            url: Target URL to scrape
+            js_render: Whether to enable JavaScript rendering (default: True)
+            wait: Wait time in milliseconds before capture
+            max_chars: Maximum characters in returned Markdown (default: 20000)
+            country: Country code for geolocation
+            block_resources: Comma-separated resource types to block
+            wait_for: CSS selector to wait for
+            **kwargs: Additional parameters passed to universal_scrape
+
+        Returns:
+            Cleaned Markdown text
+        """
+        from ._utils import html_to_markdown
+
+        html = await self.universal_scrape(
+            url=url,
+            js_render=js_render,
+            output_format="html",
+            country=country,
+            block_resources=block_resources,
+            wait=wait,
+            wait_for=wait_for,
+            **kwargs,
+        )
+        html_str = str(html) if not isinstance(html, str) else html
+        return html_to_markdown(html_str, max_length=max_chars)
 
     async def universal_scrape_advanced(
         self, request: UniversalScrapeRequest
@@ -382,9 +511,121 @@ class AsyncThordataClient:
             return decode_base64_image(resp_json["png"])
         return str(resp_json)
 
+    async def universal_scrape_batch(
+        self,
+        requests: list[UniversalScrapeRequest | dict[str, Any]],
+        *,
+        concurrency: int = 5,
+    ) -> list[dict[str, Any]]:
+        """
+        Batch Universal Scrape requests with simple concurrency control (async).
+
+        Each request item can be either:
+            - UniversalScrapeRequest instance, or
+            - dict with the same keys as universal_scrape().
+        """
+        import asyncio
+
+        if concurrency < 1:
+            concurrency = 1
+        if concurrency > 20:
+            concurrency = 20
+
+        sem = asyncio.Semaphore(concurrency)
+
+        def _from_dict(i: int, cfg: dict[str, Any]) -> UniversalScrapeRequest:
+            url = str(cfg.get("url", ""))
+            if not url:
+                raise ValueError(f"Request {i}: missing url")
+            return UniversalScrapeRequest(
+                url=url,
+                js_render=bool(cfg.get("js_render", False)),
+                output_format=cfg.get("output_format", "html"),
+                country=cfg.get("country"),
+                block_resources=cfg.get("block_resources"),
+                clean_content=cfg.get("clean_content"),
+                wait=cfg.get("wait"),
+                wait_for=cfg.get("wait_for"),
+                follow_redirect=cfg.get("follow_redirect"),
+                headers=cfg.get("headers"),
+                cookies=cfg.get("cookies"),
+                extra_params=cfg.get("extra_params", {}),
+            )
+
+        async def _one(
+            i: int, cfg: UniversalScrapeRequest | dict[str, Any]
+        ) -> dict[str, Any]:
+            try:
+                req = _from_dict(i, cfg) if isinstance(cfg, dict) else cfg
+                async with sem:
+                    out = await self.universal_scrape_advanced(req)
+                return {"index": i, "ok": True, "url": req.url, "output": out}
+            except Exception as e:
+                return {
+                    "index": i,
+                    "ok": False,
+                    "url": (
+                        cfg.get("url")
+                        if isinstance(cfg, dict)
+                        else getattr(cfg, "url", None)
+                    ),
+                    "error": {"type": type(e).__name__, "message": str(e)},
+                }
+
+        results = await asyncio.gather(
+            *[_one(i, cfg) for i, cfg in enumerate(requests)]
+        )
+        results.sort(key=lambda x: x["index"])
+        return results
+
     # =========================================================================
     # Task Management
     # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Tool discovery helpers
+    # -------------------------------------------------------------------------
+
+    async def list_tools(
+        self,
+        *,
+        group: str | None = None,
+        keyword: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        List available Web Scraper tools (metadata only).
+
+        This mirrors the sync client's list_tools but is async for API symmetry.
+        """
+        tools, group_counts = _list_tools_metadata(group=group, keyword=keyword)
+        return {
+            "tools": tools,
+            "meta": {"total": len(tools), "groups": group_counts},
+        }
+
+    async def get_tool_groups(self) -> dict[str, Any]:
+        """
+        Return discovered tool groups and counts (async variant).
+        """
+        tools, group_counts = _list_tools_metadata()
+        return {
+            "groups": [{"id": k, "count": v} for k, v in sorted(group_counts.items())],
+            "total": len(tools),
+        }
+
+    async def search_tools(self, keyword: str) -> dict[str, Any]:
+        """
+        Search tools by keyword in key / spider_id / spider_name (async variant).
+        """
+        return await self.list_tools(keyword=keyword)
+
+    async def resolve_tool_key(self, tool: str) -> str:
+        """Resolve a tool key or raw spider_id to canonical '<group>.<spider_id>' (async symmetry)."""
+        return _resolve_tool_key(tool)
+
+    async def get_tool_info(self, tool: str) -> dict[str, Any]:
+        """Get tool metadata (schema) by canonical key or raw spider_id (async symmetry)."""
+        return _get_tool_info(tool)
 
     async def create_scraper_task(
         self,
@@ -402,6 +643,10 @@ class AsyncThordataClient:
             universal_params=universal_params,
         )
         return await self.create_scraper_task_advanced(config)
+
+    # -------------------------------------------------------------------------
+    # Tool execution helpers
+    # -------------------------------------------------------------------------
 
     async def run_tool(
         self,
@@ -446,6 +691,105 @@ class AsyncThordataClient:
                 universal_params=universal_params,
             )
             return await self.create_scraper_task_advanced(config)
+
+    async def run_tool_by_key(
+        self,
+        tool: str,
+        params: dict[str, Any],
+        *,
+        file_name: str | None = None,
+        universal_params: dict[str, Any] | None = None,
+    ) -> str:
+        """
+        Run a Web Scraper tool by its key string instead of class instance (async).
+        """
+        cls = _get_tool_class_by_key(tool)
+        tool_request = cls(**params)  # type: ignore[call-arg]
+        return await self.run_tool(
+            tool_request,
+            file_name=file_name,
+            universal_params=universal_params,
+        )
+
+    async def run_tools_batch(
+        self,
+        requests: list[dict[str, Any]],
+        *,
+        concurrency: int = 5,
+    ) -> list[dict[str, Any]]:
+        """
+        Run multiple Web Scraper tools concurrently (async).
+
+        Each request item should have:
+            - "tool": tool key string
+            - "params": dict of parameters
+            - optional "file_name": custom file name
+            - optional "universal_params": dict passed to universal params
+        """
+        import asyncio
+
+        if concurrency < 1:
+            concurrency = 1
+        if concurrency > 20:
+            concurrency = 20
+
+        sem = asyncio.Semaphore(concurrency)
+
+        async def _one(i: int, req: dict[str, Any]) -> dict[str, Any]:
+            tool_key = str(req.get("tool", "")).strip()
+            params = req.get("params") or {}
+            file_name = req.get("file_name")
+            universal_params = req.get("universal_params")
+
+            if not tool_key:
+                return {
+                    "index": i,
+                    "ok": False,
+                    "task_id": None,
+                    "error": {
+                        "type": "validation_error",
+                        "message": "Missing tool key",
+                    },
+                }
+            if not isinstance(params, dict):
+                return {
+                    "index": i,
+                    "ok": False,
+                    "task_id": None,
+                    "error": {
+                        "type": "validation_error",
+                        "message": "params must be a dict",
+                    },
+                }
+
+            try:
+                async with sem:
+                    task_id = await self.run_tool_by_key(
+                        tool_key,
+                        params,
+                        file_name=file_name,
+                        universal_params=universal_params,
+                    )
+                return {
+                    "index": i,
+                    "ok": True,
+                    "task_id": task_id,
+                    "error": None,
+                }
+            except Exception as e:
+                return {
+                    "index": i,
+                    "ok": False,
+                    "task_id": None,
+                    "error": {
+                        "type": type(e).__name__,
+                        "message": str(e),
+                    },
+                }
+
+        results = await asyncio.gather(*[_one(i, r) for i, r in enumerate(requests)])
+        results.sort(key=lambda x: x["index"])
+        return results
 
     async def create_scraper_task_advanced(self, config: ScraperTaskConfig) -> str:
         self._require_public_credentials()

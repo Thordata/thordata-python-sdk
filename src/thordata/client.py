@@ -21,6 +21,19 @@ import requests
 import urllib3
 from requests.structures import CaseInsensitiveDict
 
+from ._tools_registry import (
+    get_tool_class_by_key as _get_tool_class_by_key,
+)
+from ._tools_registry import (
+    get_tool_info as _get_tool_info,
+)
+from ._tools_registry import (
+    list_tools_metadata as _list_tools_metadata,
+)
+from ._tools_registry import (
+    resolve_tool_key as _resolve_tool_key,
+)
+
 # Import Legacy/Compat
 from ._utils import (
     build_auth_headers,
@@ -88,7 +101,7 @@ class ThordataClient:
 
     # API Endpoints
     BASE_URL = "https://scraperapi.thordata.com"
-    UNIVERSAL_URL = "https://universalapi.thordata.com"
+    UNIVERSAL_URL = "https://webunlocker.thordata.com"
     API_URL = "https://openapi.thordata.com/api/web-scraper-api"
     LOCATIONS_URL = "https://openapi.thordata.com/api/locations"
 
@@ -358,6 +371,78 @@ class ThordataClient:
 
         return {"html": response.text}
 
+    def serp_batch_search(
+        self,
+        requests: list[SerpRequest | dict[str, Any]],
+        *,
+        concurrency: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Run multiple SERP queries concurrently.
+
+        Args:
+            requests: List of SerpRequest objects or dicts with query parameters
+            concurrency: Maximum number of concurrent requests (1-20)
+
+        Returns:
+            List of results, each containing 'index', 'ok', 'query', and 'output' or 'error'
+        """
+        import concurrent.futures
+        from concurrent.futures import ThreadPoolExecutor
+
+        if concurrency < 1:
+            concurrency = 1
+        if concurrency > 20:
+            concurrency = 20
+
+        def _one(i: int, req: SerpRequest | dict[str, Any]) -> dict[str, Any]:
+            try:
+                if isinstance(req, dict):
+                    # Convert dict to SerpRequest
+                    query = str(req.get("query", ""))
+                    if not query:
+                        return {
+                            "index": i,
+                            "ok": False,
+                            "error": {
+                                "type": "validation_error",
+                                "message": "Missing query",
+                            },
+                        }
+                    serp_req = SerpRequest(
+                        query=query,
+                        engine=req.get("engine", "google"),
+                        num=req.get("num", 10),
+                        country=req.get("country"),
+                        language=req.get("language"),
+                        search_type=req.get("search_type"),
+                        device=req.get("device"),
+                        render_js=req.get("render_js"),
+                        no_cache=req.get("no_cache"),
+                        output_format=req.get("output_format", "json"),
+                        ai_overview=req.get("ai_overview", False),
+                        extra_params=req.get("extra_params", {}),
+                    )
+                else:
+                    serp_req = req
+
+                data = self.serp_search_advanced(serp_req)
+                return {"index": i, "ok": True, "query": serp_req.query, "output": data}
+            except Exception as e:
+                return {
+                    "index": i,
+                    "ok": False,
+                    "error": {"type": type(e).__name__, "message": str(e)},
+                }
+
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = [executor.submit(_one, i, req) for i, req in enumerate(requests)]
+            results = [
+                future.result() for future in concurrent.futures.as_completed(futures)
+            ]
+            # Sort by index to maintain order
+            results.sort(key=lambda x: x["index"])
+            return results
+
     # =========================================================================
     # Universal Scraping API (WEB UNLOCKER) Methods
     # =========================================================================
@@ -371,8 +456,8 @@ class ThordataClient:
         country: str | None = None,
         block_resources: str | None = None,
         clean_content: str | None = None,
-        wait: int | None = None,
-        wait_for: str | None = None,
+        wait: int | None = None,  # Wait time in milliseconds (ms). Maximum: 100000 ms
+        wait_for: str | None = None,  # CSS selector to wait for
         follow_redirect: bool | None = None,
         headers: list[dict[str, str]] | None = None,
         cookies: list[dict[str, str]] | None = None,
@@ -394,6 +479,48 @@ class ThordataClient:
         )
         return self.universal_scrape_advanced(request)
 
+    def universal_scrape_markdown(
+        self,
+        url: str,
+        *,
+        js_render: bool = True,
+        wait: int | None = None,  # Wait time in milliseconds (ms)
+        max_chars: int = 20000,
+        country: str | None = None,
+        block_resources: str | None = None,
+        wait_for: str | None = None,
+        **kwargs: Any,
+    ) -> str:
+        """Fetch a URL via Universal Scrape and return cleaned Markdown text.
+
+        Args:
+            url: Target URL to scrape
+            js_render: Whether to enable JavaScript rendering (default: True)
+            wait: Wait time in milliseconds before capture
+            max_chars: Maximum characters in returned Markdown (default: 20000)
+            country: Country code for geolocation
+            block_resources: Comma-separated resource types to block
+            wait_for: CSS selector to wait for
+            **kwargs: Additional parameters passed to universal_scrape
+
+        Returns:
+            Cleaned Markdown text
+        """
+        from ._utils import html_to_markdown
+
+        html = self.universal_scrape(
+            url=url,
+            js_render=js_render,
+            output_format="html",
+            country=country,
+            block_resources=block_resources,
+            wait=wait,
+            wait_for=wait_for,
+            **kwargs,
+        )
+        html_str = str(html) if not isinstance(html, str) else html
+        return html_to_markdown(html_str, max_length=max_chars)
+
     def universal_scrape_advanced(
         self, request: UniversalScrapeRequest
     ) -> str | bytes | dict[str, str | bytes]:
@@ -409,9 +536,138 @@ class ThordataClient:
         response.raise_for_status()
         return self._process_universal_response(response, request.output_format)
 
+    def universal_scrape_batch(
+        self,
+        requests: list[UniversalScrapeRequest | dict[str, Any]],
+        *,
+        concurrency: int = 5,
+    ) -> list[dict[str, Any]]:
+        """
+        Batch Universal Scrape requests with simple concurrency control.
+
+        Each request item can be either:
+            - UniversalScrapeRequest instance, or
+            - dict with the same keys as universal_scrape().
+        """
+        import concurrent.futures
+        from concurrent.futures import ThreadPoolExecutor
+
+        if concurrency < 1:
+            concurrency = 1
+        if concurrency > 20:
+            concurrency = 20
+
+        def _from_dict(i: int, cfg: dict[str, Any]) -> UniversalScrapeRequest:
+            url = str(cfg.get("url", ""))
+            if not url:
+                raise ValueError(f"Request {i}: missing url")
+            return UniversalScrapeRequest(
+                url=url,
+                js_render=bool(cfg.get("js_render", False)),
+                output_format=cfg.get("output_format", "html"),
+                country=cfg.get("country"),
+                block_resources=cfg.get("block_resources"),
+                clean_content=cfg.get("clean_content"),
+                wait=cfg.get("wait"),
+                wait_for=cfg.get("wait_for"),
+                follow_redirect=cfg.get("follow_redirect"),
+                headers=cfg.get("headers"),
+                cookies=cfg.get("cookies"),
+                extra_params=cfg.get("extra_params", {}),
+            )
+
+        def _one(
+            i: int, cfg: UniversalScrapeRequest | dict[str, Any]
+        ) -> dict[str, Any]:
+            try:
+                req = _from_dict(i, cfg) if isinstance(cfg, dict) else cfg
+                out = self.universal_scrape_advanced(req)
+                return {"index": i, "ok": True, "url": req.url, "output": out}
+            except Exception as e:
+                return {
+                    "index": i,
+                    "ok": False,
+                    "url": (
+                        cfg.get("url")
+                        if isinstance(cfg, dict)
+                        else getattr(cfg, "url", None)
+                    ),
+                    "error": {"type": type(e).__name__, "message": str(e)},
+                }
+
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = [executor.submit(_one, i, cfg) for i, cfg in enumerate(requests)]
+            results = [f.result() for f in concurrent.futures.as_completed(futures)]
+        results.sort(key=lambda x: x["index"])
+        return results
+
     # =========================================================================
     # Web Scraper API - Task Management
     # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Tool discovery helpers
+    # -------------------------------------------------------------------------
+
+    def list_tools(
+        self,
+        *,
+        group: str | None = None,
+        keyword: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        List available Web Scraper tools (metadata only).
+
+        Args:
+            group: Optional tool group filter, e.g. "ecommerce", "social"
+            keyword: Optional keyword to search in key / spider_id / spider_name
+
+        Returns:
+            {
+                "tools": [ ... tool metadata ... ],
+                "meta": {
+                    "total": int,
+                    "groups": {group: count, ...},
+                }
+            }
+        """
+        tools, group_counts = _list_tools_metadata(group=group, keyword=keyword)
+        return {
+            "tools": tools,
+            "meta": {"total": len(tools), "groups": group_counts},
+        }
+
+    def get_tool_groups(self) -> dict[str, Any]:
+        """
+        Return discovered tool groups and counts.
+
+        Returns:
+            {
+                "groups": [{"id": group, "count": n}, ...],
+                "total": int,
+            }
+        """
+        tools, group_counts = _list_tools_metadata()
+        return {
+            "groups": [{"id": k, "count": v} for k, v in sorted(group_counts.items())],
+            "total": len(tools),
+        }
+
+    def search_tools(self, keyword: str) -> dict[str, Any]:
+        """
+        Search tools by keyword in key / spider_id / spider_name.
+
+        This is a thin wrapper around list_tools(keyword=...).
+        """
+        return self.list_tools(keyword=keyword)
+
+    def resolve_tool_key(self, tool: str) -> str:
+        """Resolve a tool key or raw spider_id to canonical '<group>.<spider_id>'."""
+        return _resolve_tool_key(tool)
+
+    def get_tool_info(self, tool: str) -> dict[str, Any]:
+        """Get tool metadata (schema) by canonical key or raw spider_id."""
+        return _get_tool_info(tool)
 
     def create_scraper_task(
         self,
@@ -429,6 +685,10 @@ class ThordataClient:
             universal_params=universal_params,
         )
         return self.create_scraper_task_advanced(config)
+
+    # -------------------------------------------------------------------------
+    # Tool execution helpers
+    # -------------------------------------------------------------------------
 
     def run_tool(
         self,
@@ -478,6 +738,124 @@ class ThordataClient:
                 universal_params=universal_params,
             )
             return self.create_scraper_task_advanced(config)
+
+    def run_tool_by_key(
+        self,
+        tool: str,
+        params: dict[str, Any],
+        *,
+        file_name: str | None = None,
+        universal_params: dict[str, Any] | None = None,
+    ) -> str:
+        """
+        Run a Web Scraper tool by its key string instead of class instance.
+
+        Args:
+            tool: Tool key, e.g. "ecommerce.amazon_product_by-url"
+            params: Tool parameters dict (matches ToolRequest fields)
+            file_name: Optional file name for the task result
+            universal_params: Optional universal scrape parameters
+
+        Returns:
+            Task ID string.
+        """
+        cls = _get_tool_class_by_key(tool)
+        tool_request = cls(**params)  # type: ignore[call-arg]
+        return self.run_tool(
+            tool_request,
+            file_name=file_name,
+            universal_params=universal_params,
+        )
+
+    def run_tools_batch(
+        self,
+        requests: list[dict[str, Any]],
+        *,
+        concurrency: int = 5,
+    ) -> list[dict[str, Any]]:
+        """
+        Run multiple Web Scraper tools concurrently.
+
+        Each request item should have:
+            - "tool": tool key string
+            - "params": dict of parameters
+            - optional "file_name": custom file name
+            - optional "universal_params": dict passed to universal params
+
+        Returns:
+            List of result dicts:
+                {
+                    "index": int,
+                    "ok": bool,
+                    "task_id": str | None,
+                    "error": {...} | None,
+                }
+        """
+        import concurrent.futures
+        from concurrent.futures import ThreadPoolExecutor
+
+        if concurrency < 1:
+            concurrency = 1
+        if concurrency > 20:
+            concurrency = 20
+
+        def _one(i: int, req: dict[str, Any]) -> dict[str, Any]:
+            tool_key = str(req.get("tool", "")).strip()
+            params = req.get("params") or {}
+            file_name = req.get("file_name")
+            universal_params = req.get("universal_params")
+
+            if not tool_key:
+                return {
+                    "index": i,
+                    "ok": False,
+                    "task_id": None,
+                    "error": {
+                        "type": "validation_error",
+                        "message": "Missing tool key",
+                    },
+                }
+            if not isinstance(params, dict):
+                return {
+                    "index": i,
+                    "ok": False,
+                    "task_id": None,
+                    "error": {
+                        "type": "validation_error",
+                        "message": "params must be a dict",
+                    },
+                }
+            try:
+                task_id = self.run_tool_by_key(
+                    tool_key,
+                    params,
+                    file_name=file_name,
+                    universal_params=universal_params,
+                )
+                return {
+                    "index": i,
+                    "ok": True,
+                    "task_id": task_id,
+                    "error": None,
+                }
+            except Exception as e:
+                return {
+                    "index": i,
+                    "ok": False,
+                    "task_id": None,
+                    "error": {
+                        "type": type(e).__name__,
+                        "message": str(e),
+                    },
+                }
+
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = [executor.submit(_one, i, r) for i, r in enumerate(requests)]
+            results = [
+                future.result() for future in concurrent.futures.as_completed(futures)
+            ]
+        results.sort(key=lambda x: x["index"])
+        return results
 
     def create_scraper_task_advanced(self, config: ScraperTaskConfig) -> str:
         self._require_public_credentials()

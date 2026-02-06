@@ -121,9 +121,9 @@ def main() -> bool:
 
     print("\n--- Locations Test Summary ---")
     if all_ok:
-        print("✅ Locations API checks passed.")
+        print("Locations API checks passed.")
     else:
-        print("❌ Some locations API checks failed. See artifacts for details.")
+        print("Some locations API checks failed. See artifacts for details.")
 
     return all_ok
 

@@ -1,6 +1,6 @@
 # Thordata Browser API Reference (Python SDK)
 
-> **SDK Version**: 1.6.0  
+> **SDK Version**: 1.8.1  
 > **Last Updated**: 2025-01-21
 
 Thordata Browser API (Scraping Browser) provides remote browser automation capabilities through WebSocket connections. It supports Playwright, Puppeteer, and Selenium frameworks.

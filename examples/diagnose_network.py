@@ -1,6 +1,6 @@
 """
-🔍 Network & Proxy Diagnostic Tool
-==================================
+Network & Proxy Diagnostic Tool
+================================
 This script bypasses the SDK to test raw connectivity.
 It helps identify if the issue is with:
 1. Local Network/Firewall
@@ -29,10 +29,10 @@ def check_direct_connect():
     print_header("1. Direct Connection Check")
     try:
         resp = requests.get(TARGET_URL, timeout=5)
-        print(f"✅ Direct Access OK. IP: {resp.json().get('origin')}")
+        print(f"[OK] Direct Access OK. IP: {resp.json().get('origin')}")
         return True
     except Exception as e:
-        print(f"❌ Direct Access Failed: {e}")
+        print(f"[FAIL] Direct Access Failed: {e}")
         return False
 
 
@@ -40,16 +40,16 @@ def check_upstream_proxy():
     print_header("2. Upstream Proxy Check")
     upstream = os.getenv("THORDATA_UPSTREAM_PROXY")
     if not upstream:
-        print("⚠️ No THORDATA_UPSTREAM_PROXY configured in env.")
+        print("[WARN] No THORDATA_UPSTREAM_PROXY configured in env.")
         return
 
     print(f"Testing Upstream: {upstream}")
     proxies = {"http": upstream, "https": upstream}
     try:
         resp = requests.get("http://www.google.com", proxies=proxies, timeout=10)
-        print(f"✅ Upstream to Google OK. Status: {resp.status_code}")
+        print(f"[OK] Upstream to Google OK. Status: {resp.status_code}")
     except Exception as e:
-        print(f"❌ Upstream to Google Failed: {e}")
+        print(f"[FAIL] Upstream to Google Failed: {e}")
 
 
 def manual_proxy_connect(name, host, port, user, password):
@@ -109,14 +109,14 @@ def manual_proxy_connect(name, host, port, user, password):
         head = data.split(b"\r\n\r\n")[0].decode(errors="ignore")
 
         if "200 Connection established" in head:
-            print("✅ Thordata Auth Success! (HTTP Tunnel Established)")
+            print("[OK] Thordata Auth Success! (HTTP Tunnel Established)")
         elif "407" in head:
-            print("❌ Thordata Auth Failed (407 Proxy Authentication Required)")
+            print("[FAIL] Thordata Auth Failed (407 Proxy Authentication Required)")
         else:
-            print(f"❌ Thordata Handshake Failed. Response:\n{head}")
+            print(f"[FAIL] Thordata Handshake Failed. Response:\n{head}")
 
     except Exception as e:
-        print(f"❌ Connection Error: {e}")
+        print(f"[FAIL] Connection Error: {e}")
     finally:
         s.close()
 

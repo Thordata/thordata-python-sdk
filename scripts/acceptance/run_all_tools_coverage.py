@@ -667,8 +667,8 @@ def main() -> bool:
     print("COVERAGE SUMMARY")
     print("=" * 80)
     print(f"Total: {summary['total']}")
-    print(f"Passed: {summary['passed']} ✅")
-    print(f"Failed: {summary['failed']} ❌")
+    print(f"Passed: {summary['passed']}")
+    print(f"Failed: {summary['failed']}")
     print(f"Coverage: {summary['passed'] / summary['total'] * 100:.1f}%")
     print("\nBy Tool Type:")
     for tool_type, count in summary["by_tool_type"].items():

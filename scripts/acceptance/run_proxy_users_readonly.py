@@ -84,9 +84,9 @@ def main() -> bool:
 
     print("\n--- Proxy Users Summary ---")
     if all_ok:
-        print("✅ Proxy users read-only check passed.")
+        print("Proxy users read-only check passed.")
     else:
-        print("❌ Proxy users read-only check failed.")
+        print("Proxy users read-only check failed.")
 
     return all_ok
 

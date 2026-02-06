@@ -89,9 +89,9 @@ def main() -> bool:
 
     print("\n--- Account Summary ---")
     if all_ok:
-        print("✅ Account checks passed.")
+        print("Account checks passed.")
     else:
-        print("❌ Account checks failed. See artifacts for details.")
+        print("Account checks failed. See artifacts for details.")
 
     return all_ok
 

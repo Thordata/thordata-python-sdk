@@ -121,9 +121,9 @@ def main() -> bool:
 
     print("\n--- SERP Summary ---")
     if all_ok:
-        print("✅ SERP checks passed.")
+        print("SERP checks passed.")
     else:
-        print("❌ Some SERP checks failed. See artifacts for details.")
+        print("Some SERP checks failed. See artifacts for details.")
 
     return all_ok
 

@@ -47,6 +47,11 @@ class BrowserSession:
         self._browsers: dict[str, Browser] = {}
         self._pages: dict[str, Page] = {}
         self._current_domain: str = "default"
+        # Console and network diagnostics cache
+        self._console_messages: dict[str, list[dict[str, Any]]] = {}
+        self._network_requests: dict[str, list[dict[str, Any]]] = {}
+        self._max_console_messages = 10
+        self._max_network_requests = 20
 
     @staticmethod
     def _get_domain(url: str) -> str:
@@ -155,6 +160,67 @@ class BrowserSession:
         else:
             page = await context.new_page()
 
+        # Reset network tracking for this domain
+        self._console_messages[domain] = []
+        self._network_requests[domain] = []
+
+        # Network request tracking
+        async def on_request(request: Any) -> None:
+            try:
+                self._network_requests.setdefault(domain, [])
+                import time
+
+                self._network_requests[domain].append(
+                    {
+                        "url": request.url,
+                        "method": request.method,
+                        "resourceType": getattr(request, "resource_type", None),
+                        "timestamp": int(time.time() * 1000),
+                    }
+                )
+                self._network_requests[domain] = self._network_requests[domain][
+                    -self._max_network_requests :
+                ]
+            except Exception:
+                pass
+
+        async def on_response(response: Any) -> None:
+            try:
+                # Update last matching request with status
+                req = response.request
+                url = getattr(req, "url", None)
+                if url and domain in self._network_requests:
+                    for item in reversed(self._network_requests[domain]):
+                        if item.get("url") == url and item.get("statusCode") is None:
+                            item["statusCode"] = response.status
+                            break
+            except Exception:
+                pass
+
+        page.on("request", on_request)
+        page.on("response", on_response)
+
+        # Console message tracking
+        async def on_console(msg: Any) -> None:
+            try:
+                self._console_messages.setdefault(domain, [])
+                import time
+
+                self._console_messages[domain].append(
+                    {
+                        "type": msg.type,
+                        "message": msg.text,
+                        "timestamp": int(time.time() * 1000),
+                    }
+                )
+                self._console_messages[domain] = self._console_messages[domain][
+                    -self._max_console_messages :
+                ]
+            except Exception:
+                pass
+
+        page.on("console", on_console)
+
         self._pages[domain] = page
         return page
 
@@ -175,26 +241,31 @@ class BrowserSession:
         return {"url": page.url, "title": title}
 
     async def snapshot(
-        self, filtered: bool = True, max_items: int = 80
+        self, filtered: bool = True, max_items: int = 80, include_dom: bool = False
     ) -> dict[str, Any]:
         """Capture an ARIA-like snapshot of the current page.
 
         Args:
             filtered: Whether to filter to interactive elements only
             max_items: Maximum number of elements to include
+            include_dom: Whether to include dom_snapshot (DOM-based refs)
 
         Returns:
-            Dictionary with url, title, and aria_snapshot
+            Dictionary with url, title, aria_snapshot, and optionally dom_snapshot
         """
         page = await self.get_page()
         full_snapshot = await self._get_interactive_snapshot(page)
 
         if not filtered:
-            return {
+            result = {
                 "url": page.url,
                 "title": await page.title(),
                 "aria_snapshot": full_snapshot,
             }
+            if include_dom:
+                dom_snapshot_raw = await self._capture_dom_snapshot(page)
+                result["dom_snapshot"] = self._format_dom_elements(dom_snapshot_raw)
+            return result
 
         # Filter and limit
         filtered_snapshot = self._filter_snapshot(full_snapshot)
@@ -202,11 +273,17 @@ class BrowserSession:
             filtered_snapshot, max_items=max_items
         )
 
-        return {
+        result = {
             "url": page.url,
             "title": await page.title(),
             "aria_snapshot": filtered_snapshot,
         }
+
+        if include_dom:
+            dom_snapshot_raw = await self._capture_dom_snapshot(page)
+            result["dom_snapshot"] = self._format_dom_elements(dom_snapshot_raw)
+
+        return result
 
     async def click_ref(
         self, ref: str, wait_for_navigation_ms: int | None = None
@@ -328,6 +405,49 @@ class BrowserSession:
         await page.go_back()
         return {"url": page.url}
 
+    def get_console_messages(
+        self, n: int = 10, domain: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Return recent console messages for the given domain.
+
+        Args:
+            n: Number of messages to return
+            domain: Domain name (defaults to current domain)
+
+        Returns:
+            List of console message dictionaries
+        """
+        d = domain or self._current_domain
+        items = self._console_messages.get(d, [])
+        return items[-max(0, int(n)) :]
+
+    def get_network_requests(
+        self, n: int = 20, domain: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Return recent network request summaries for the given domain.
+
+        Args:
+            n: Number of requests to return
+            domain: Domain name (defaults to current domain)
+
+        Returns:
+            List of network request dictionaries
+        """
+        d = domain or self._current_domain
+        items = self._network_requests.get(d, [])
+        return items[-max(0, int(n)) :]
+
+    def reset_page(self, domain: str | None = None) -> None:
+        """Drop cached page for a domain so the next call recreates it.
+
+        Args:
+            domain: Domain name (defaults to current domain)
+        """
+        d = domain or self._current_domain
+        self._pages.pop(d, None)
+        self._console_messages.pop(d, None)
+        self._network_requests.pop(d, None)
+
     async def _get_interactive_snapshot(self, page: Page) -> str:
         """Generate a text snapshot of interactive elements with refs."""
         script = """
@@ -447,6 +567,58 @@ class BrowserSession:
             if items > 0:
                 out.append(line)
         return "\n".join(out).strip()
+
+    async def _capture_dom_snapshot(self, page: Page) -> list[dict[str, Any]]:
+        """Capture a lightweight DOM snapshot of interactive elements."""
+        script = """
+        () => {
+            const selectors = [
+                'a[href]', 'button', 'input', 'select', 'textarea',
+                '[role="button"]', '[role="link"]', '[role="checkbox"]',
+                '[tabindex]:not([tabindex="-1"])'
+            ];
+            const elements = Array.from(document.querySelectorAll(selectors.join(',')));
+            const results = [];
+            let counter = 0;
+
+            for (const el of elements) {
+                const style = window.getComputedStyle(el);
+                if (style.display === 'none' || style.visibility === 'hidden') {
+                    continue;
+                }
+
+                if (!el.dataset.fastmcpRef) {
+                    el.dataset.fastmcpRef = `dom-${++counter}`;
+                }
+
+                let name = el.innerText || el.getAttribute('aria-label') || el.getAttribute('title') || '';
+                name = (name || '').replace(/\\s+/g, ' ').trim();
+
+                results.push({
+                    ref: el.dataset.fastmcpRef,
+                    role: el.getAttribute('role') || el.tagName.toLowerCase(),
+                    name,
+                    url: el.href || ''
+                });
+            }
+            return results;
+        }
+        """
+        return await page.evaluate(script)
+
+    @staticmethod
+    def _format_dom_elements(dom_snapshot_raw: list[dict[str, Any]]) -> str:
+        """Format DOM snapshot elements into a readable text representation."""
+        lines = []
+        for el in dom_snapshot_raw:
+            ref = el.get("ref", "")
+            role = el.get("role", "")
+            name = el.get("name", "")
+            url = el.get("url", "")
+            lines.append(f'[{ref}] {role} "{name}"')
+            if url:
+                lines.append(f'  /url: "{url}"')
+        return "\n".join(lines)
 
     async def close(self) -> None:
         """Cleanly close all pages, browsers, and Playwright."""

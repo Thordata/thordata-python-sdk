@@ -1,6 +1,6 @@
 # Thordata Web Scraper Tasks API Reference (Python SDK)
 
-> **SDK Version**: 1.6.0  
+> **SDK Version**: 1.8.1  
 > **Last Updated**: 2025-01-21
 
 Thordata Web Scraper Tasks API provides pre-built scraping tools for 120+ platforms (Amazon, Google Maps, YouTube, TikTok, etc.). Tasks are created asynchronously and results are downloaded when ready.
@@ -113,7 +113,10 @@ if status == "ready":
 - **Zillow**: Price by URL, Product by URL/Filter/List URL
 - **Airbnb**: Product by Search URL/Location/URL
 
-See [Tool Coverage Matrix](TOOL_COVERAGE_MATRIX.md) for complete list.
+For a complete, up-to-date list of tools and spider IDs, you can:
+
+- Call `client.list_tools()` / `async_client.list_tools()` in the SDK to inspect the current registry.
+- Or consult the Web Scraper section of the official online documentation.
 
 ## Task Lifecycle
 

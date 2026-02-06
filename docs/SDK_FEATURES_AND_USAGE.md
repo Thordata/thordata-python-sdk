@@ -3,7 +3,7 @@
 > **Package**: `thordata-sdk`  
 > **Repository**: `thordata-python-sdk`  
 > **Python**: 3.9+  
-> **Version**: 1.6.0
+> **Version**: 1.8.1
 
 This document is the single entry point for the SDK capabilities and usage examples.
 
@@ -53,6 +53,24 @@ The SDK supports multiple credentials depending on which product you use:
 - **Proxy Network**: product-specific username/password (e.g. `THORDATA_RESIDENTIAL_USERNAME`)
 
 Recommended: set environment variables via `.env`.
+
+You can load a local `.env` file in two ways:
+
+- With `python-dotenv`:
+
+```python
+from dotenv import load_dotenv
+
+load_dotenv()  # loads ./.env
+```
+
+- Or with the built‑in helper (no extra dependency):
+
+```python
+from thordata import load_env_file
+
+load_env_file()  # loads ./.env if present
+```
 
 ---
 
@@ -271,3 +289,29 @@ See: [OUTPUT_FORMAT_ALIGNMENT.md](./OUTPUT_FORMAT_ALIGNMENT.md)
 - [Universal Reference](./universal_reference.md)
 - [Browser Reference](./browser_reference.md)
 - [Web Scraper Tasks Reference](./web_scraper_tasks_reference.md)
+
+---
+
+## Advanced Configuration (Environment Variables)
+
+For most users, default endpoints are sufficient. Advanced users can override
+API base URLs and proxy behavior via environment variables:
+
+- **API base URLs**
+  - `THORDATA_SCRAPERAPI_BASE_URL` – override SERP API base (default: `https://scraperapi.thordata.com`)
+  - `THORDATA_UNIVERSALAPI_BASE_URL` – override Web Unlocker base (default: `https://webunlocker.thordata.com`)
+  - `THORDATA_WEB_SCRAPER_API_BASE_URL` – override Web Scraper API base
+  - `THORDATA_LOCATIONS_BASE_URL` – override Locations API base
+  - `THORDATA_GATEWAY_BASE_URL`, `THORDATA_CHILD_BASE_URL` – advanced management APIs
+
+- **Proxy & networking**
+  - `THORDATA_UPSTREAM_PROXY` – upstream proxy when you are behind a firewall (e.g. `http://127.0.0.1:7897` for Clash)
+  - `THORDATA_RESIDENTIAL_USERNAME` / `THORDATA_RESIDENTIAL_PASSWORD` – default Residential proxy credentials
+  - `THORDATA_UNLIMITED_USERNAME` / `THORDATA_UNLIMITED_PASSWORD` – Unlimited high‑bandwidth proxy credentials
+
+- **Testing & diagnostics**
+  - `THORDATA_INTEGRATION` – when set to `true/1/yes`, enables live integration flows in acceptance scripts
+  - `THORDATA_CONCURRENCY` – optional concurrency hint used by some examples (e.g. `examples/async_high_concurrency.py`)
+
+These variables are read by both `ThordataClient` and `AsyncThordataClient`
+at initialization time where applicable.

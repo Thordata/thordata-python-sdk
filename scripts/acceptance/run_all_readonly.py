@@ -24,7 +24,13 @@ from .common import print_header
 
 
 def _run(script: Path) -> tuple[bool, int]:
-    cmd = [sys.executable, str(script)]
+    """Run a single acceptance script as a module.
+
+    Using ``-m scripts.acceptance.<name>`` ensures that package-relative
+    imports (e.g. ``from .common import ...``) work correctly.
+    """
+    module_name = f"scripts.acceptance.{script.stem}"
+    cmd = [sys.executable, "-m", module_name]
     # Ensure env vars like THORDATA_INTEGRATION propagate
     env = dict(os.environ)
     p = subprocess.run(cmd, env=env)
