@@ -2,51 +2,29 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 
+# Import from SDK to use centralized .env loading
+repo_root = Path(__file__).resolve().parents[2]
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+
+from thordata.env import load_env_file
+
 
 def load_dotenv_if_present(*, override: bool = False) -> None:
-    """Load .env from repo root (best-effort, no external deps).
+    """Load .env from repo root using SDK's centralized loader.
 
     - If override=False (default), existing environment variables win.
     - Supports simple KEY=VALUE lines and ignores comments/blank lines.
     """
-
-    # repo root = thordata-python-sdk
-    repo_root = Path(__file__).resolve().parents[2]
     env_path = repo_root / ".env"
-    if not env_path.exists():
-        return
-
-    try:
-        content = env_path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        content = env_path.read_text(encoding="utf-8", errors="ignore")
-
-    for raw in content.splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        if "=" not in line:
-            continue
-        key, val = line.split("=", 1)
-        key = key.strip()
-        val = val.strip()
-        if not key:
-            continue
-
-        # remove surrounding quotes
-        if (val.startswith('"') and val.endswith('"')) or (
-            val.startswith("'") and val.endswith("'")
-        ):
-            val = val[1:-1]
-
-        if override or key not in os.environ or os.environ.get(key, "") == "":
-            os.environ[key] = val
+    load_env_file(env_path, override=override)
 
 
 @dataclass(frozen=True)
