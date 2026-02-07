@@ -40,8 +40,8 @@ class TestSerpIntegration:
         )
 
         assert isinstance(result, dict)
-        assert "organic_results" in result or "results" in result
-        assert len(result.get("organic_results", result.get("results", []))) > 0
+        assert "organic" in result or "organic_results" in result or "results" in result
+        assert len(result.get("organic", result.get("organic_results", result.get("results", [])))) > 0
 
     def test_serp_with_country(self):
         """Test SERP search with country filter."""
@@ -54,7 +54,7 @@ class TestSerpIntegration:
         )
 
         assert isinstance(result, dict)
-        assert "organic_results" in result or "results" in result
+        assert "organic" in result or "organic_results" in result or "results" in result
 
 
 @pytest.mark.skipif(not _requires_integration(), reason="THORDATA_INTEGRATION not set")
@@ -65,20 +65,20 @@ class TestUniversalScrapeIntegration:
         """Test basic HTML scraping."""
         client = _get_client()
         html = client.universal_scrape(
-            url="https://example.com",
+            url="https://httpbin.org/get",
             js_render=False,
             output_format="html",
         )
 
         assert isinstance(html, str)
         assert len(html) > 0
-        assert "<html" in html.lower() or "example domain" in html.lower()
+        assert "<html" in html.lower() or "httpbin" in html.lower() or "origin" in html.lower()
 
     def test_universal_scrape_with_country(self):
         """Test scraping with country parameter."""
         client = _get_client()
         html = client.universal_scrape(
-            url="https://example.com",
+            url="https://httpbin.org/get",
             js_render=False,
             country="us",
         )
@@ -320,7 +320,7 @@ class TestAsyncClientIntegration:
             )
 
             assert isinstance(result, dict)
-            assert "organic_results" in result or "results" in result
+            assert "organic" in result or "organic_results" in result or "results" in result
 
     @pytest.mark.asyncio
     async def test_async_universal_scrape(self):
@@ -333,7 +333,7 @@ class TestAsyncClientIntegration:
 
         async with client:
             html = await client.universal_scrape(
-                url="https://example.com",
+                url="https://httpbin.org/get",
                 js_render=False,
             )
 
@@ -385,8 +385,8 @@ class TestBatchOperationsIntegration:
         client = _get_client()
 
         requests = [
-            {"url": "https://example.com"},
-            {"url": "https://example.org"},
+            {"url": "https://httpbin.org/get"},
+            {"url": "https://httpbin.org/ip"},
         ]
 
         results = client.universal_scrape_batch(requests, concurrency=2)

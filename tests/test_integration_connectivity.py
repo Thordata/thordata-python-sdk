@@ -49,6 +49,7 @@ class TestProxyConnectivity:
                 num=1,
             )
             assert isinstance(result, dict)
+            assert "organic" in result or "organic_results" in result or "results" in result
         except Exception as e:
             pytest.fail(f"SERP API connectivity failed: {e}")
 
@@ -58,7 +59,7 @@ class TestProxyConnectivity:
 
         try:
             html = client.universal_scrape(
-                url="https://example.com",
+                url="https://httpbin.org/get",
                 js_render=False,
             )
             assert isinstance(html, str)
@@ -239,8 +240,8 @@ class TestBatchOperationsConnectivity:
         client = _get_client()
 
         requests = [
-            {"url": "https://example.com"},
-            {"url": "https://example.org"},
+            {"url": "https://httpbin.org/get"},
+            {"url": "https://httpbin.org/ip"},
         ]
 
         try:
@@ -349,6 +350,7 @@ class TestAsyncConnectivity:
             )
 
             assert isinstance(result, dict)
+            assert "organic" in result or "organic_results" in result or "results" in result
 
     async def test_async_universal_connectivity(self):
         """Test async universal connectivity."""
@@ -362,7 +364,7 @@ class TestAsyncConnectivity:
 
         async with client:
             html = await client.universal_scrape(
-                url="https://example.com",
+                url="https://httpbin.org/get",
                 js_render=False,
             )
 
