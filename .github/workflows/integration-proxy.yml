@@ -1,0 +1,54 @@
+name: Integration - Proxy Products (Overseas Runner)
+
+on:
+  workflow_dispatch:
+  # Optional: run on PRs but this will require secrets to be available.
+  # pull_request:
+
+jobs:
+  proxy-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e .
+          python -m pip install pytest
+
+      - name: Run proxy integration tests
+        env:
+          THORDATA_INTEGRATION: "true"
+
+          THORDATA_SCRAPER_TOKEN: ${{ secrets.THORDATA_SCRAPER_TOKEN }}
+          THORDATA_PUBLIC_TOKEN: ${{ secrets.THORDATA_PUBLIC_TOKEN }}
+          THORDATA_PUBLIC_KEY: ${{ secrets.THORDATA_PUBLIC_KEY }}
+
+          THORDATA_PROXY_HOST: ${{ secrets.THORDATA_PROXY_HOST }}
+          THORDATA_PROXY_PORT: ${{ secrets.THORDATA_PROXY_PORT }}
+          THORDATA_PROXY_PROTOCOL: ${{ secrets.THORDATA_PROXY_PROTOCOL }}
+
+          THORDATA_RESIDENTIAL_USERNAME: ${{ secrets.THORDATA_RESIDENTIAL_USERNAME }}
+          THORDATA_RESIDENTIAL_PASSWORD: ${{ secrets.THORDATA_RESIDENTIAL_PASSWORD }}
+
+          THORDATA_MOBILE_USERNAME: ${{ secrets.THORDATA_MOBILE_USERNAME }}
+          THORDATA_MOBILE_PASSWORD: ${{ secrets.THORDATA_MOBILE_PASSWORD }}
+
+          THORDATA_DATACENTER_USERNAME: ${{ secrets.THORDATA_DATACENTER_USERNAME }}
+          THORDATA_DATACENTER_PASSWORD: ${{ secrets.THORDATA_DATACENTER_PASSWORD }}
+
+          THORDATA_ISP_HOST: ${{ secrets.THORDATA_ISP_HOST }}
+          THORDATA_ISP_USERNAME: ${{ secrets.THORDATA_ISP_USERNAME }}
+          THORDATA_ISP_PASSWORD: ${{ secrets.THORDATA_ISP_PASSWORD }}
+
+        run: |
+          python -m pytest tests/test_integration_proxy_protocols.py -v -s --tb=short

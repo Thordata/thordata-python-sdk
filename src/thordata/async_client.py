@@ -463,6 +463,30 @@ class AsyncThordataClient:
             "POST", self._universal_url, data=payload, headers=headers
         )
 
+        # Check HTTP status code before processing response
+        if response.status >= 400:
+            # Try to get error message from response
+            try:
+                resp_json = await response.json()
+                if isinstance(resp_json, dict):
+                    code = resp_json.get("code")
+                    msg = extract_error_message(resp_json)
+                    raise_for_code(
+                        f"Universal Error: {msg}",
+                        status_code=response.status,
+                        code=code if code is not None else response.status,
+                        payload=resp_json,
+                    )
+            except ValueError:
+                # If response is not JSON, raise with status code
+                from ..exceptions import ThordataAPIError
+
+                raise ThordataAPIError(
+                    f"Universal API returned HTTP {response.status}",
+                    code=response.status,
+                    status_code=response.status,
+                ) from None
+
         try:
             resp_json = await response.json()
         except ValueError:

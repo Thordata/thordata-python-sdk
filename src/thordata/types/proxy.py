@@ -157,7 +157,15 @@ class ProxyConfig:
         return f"{proto}://{safe_user}:{safe_pass}@{self.host}:{self.port}"
 
     def build_proxy_endpoint(self) -> str:
+        # IMPORTANT:
+        # For HTTP proxying, urllib3.ProxyManager expects an *http://* proxy URL
+        # even when the destination URL is https:// (it will use CONNECT).
+        # Using https:// here means "TLS to the proxy server" which many proxy
+        # endpoints/ports (e.g. 9999) do not support and will cause
+        # WRONG_VERSION_NUMBER.
         proto = "socks5h" if self.protocol == "socks5" else self.protocol
+        if proto in ("http", "https"):
+            proto = "http"
         return f"{proto}://{self.host}:{self.port}"
 
     def build_proxy_basic_auth(self) -> str:

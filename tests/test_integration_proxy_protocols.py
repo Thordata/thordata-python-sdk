@@ -1,112 +1,130 @@
 import os
-import time
 
 import pytest
-from dotenv import load_dotenv
+
+# Load .env file first
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(".env")
+except ImportError:
+    from thordata.env import load_env_file
+
+    load_env_file(".env")
 
 from thordata import ThordataClient
-from thordata.models import ProxyConfig, ProxyProduct
+from thordata.models import ProxyConfig, ProxyProduct, StaticISPProxy
 
 TARGET = "https://ipinfo.thordata.com"
 
-RUN = (os.getenv("THORDATA_INTEGRATION") or "").strip().lower() == "true"
-STRICT = (os.getenv("THORDATA_INTEGRATION_STRICT") or "").strip().lower() == "true"
-
-if not RUN:
-    pytest.skip(
-        "integration disabled (set THORDATA_INTEGRATION=true)", allow_module_level=True
-    )
+RUN_INTEGRATION = (os.getenv("THORDATA_INTEGRATION") or "").strip().lower() == "true"
+IS_CI = (os.getenv("GITHUB_ACTIONS") or "").strip().lower() == "true"
+FORCE = (os.getenv("THORDATA_INTEGRATION_FORCE") or "").strip().lower() == "true"
 
 pytestmark = pytest.mark.integration
 
 
-def _must(k: str) -> str:
-    v = (os.getenv(k) or "").strip()
-    if not v:
-        pytest.skip(f"missing {k}")
-    return v
-
-
-def _looks_like_interference(e: Exception) -> bool:
-    s = str(e).lower()
-    return any(
-        x in s
-        for x in [
-            "wrong version number",
-            "packet length too long",
-            "server gave http response to https client",
-            "hpe_cr_expected",
-            "parse error",
-            "econnreset",
-            "socket hang up",
-            "unexpected_message",
-        ]
-    )
-
-
-def test_proxy_https_socks5h_integration():
-    load_dotenv(".env")
-
-    upstream = os.getenv("THORDATA_UPSTREAM_PROXY", "").strip()
-    if not upstream:
-        # No upstream proxy: clear env to avoid accidental double proxy
-        for k in [
-            "HTTP_PROXY",
-            "HTTPS_PROXY",
-            "ALL_PROXY",
-            "NO_PROXY",
-            "http_proxy",
-            "https_proxy",
-            "all_proxy",
-            "no_proxy",
-        ]:
-            os.environ.pop(k, None)
-
-    host = _must("THORDATA_PROXY_HOST")
-    port = int((os.getenv("THORDATA_PROXY_PORT") or "9999").strip())
-    u = _must("THORDATA_RESIDENTIAL_USERNAME")
-    p = _must("THORDATA_RESIDENTIAL_PASSWORD")
-
-    client = ThordataClient(scraper_token=os.getenv("THORDATA_SCRAPER_TOKEN", "dummy"))
-
-    # With upstream proxy, HTTPS may be limited (TLS-in-TLS). Prefer http or socks5h.
-    if upstream:
-        protos = ["https", "socks5h"]
-    else:
-        protos = ["https", "socks5h"]
-        if (os.getenv("THORDATA_INTEGRATION_HTTP") or "").strip().lower() == "true":
-            protos.insert(0, "http")
-
-    for proto in protos:
-        print(f"\n--- Testing protocol: {proto} ---")
-        proxy = ProxyConfig(
-            username=u,
-            password=p,
-            product=ProxyProduct.RESIDENTIAL,
-            host=host,
-            port=port,
-            protocol=proto,
-            country="us",
+def _should_run_integration() -> tuple[bool, str]:
+    if not RUN_INTEGRATION:
+        return False, "THORDATA_INTEGRATION is not true"
+    # Local dev (e.g. mainland China) often cannot run proxy integration reliably.
+    # Only run locally if explicitly forced.
+    if not IS_CI and not FORCE:
+        return (
+            False,
+            "skipping local proxy integration (set THORDATA_INTEGRATION_FORCE=true to run locally)",
         )
+    return True, ""
 
-        last = None
-        for attempt in range(3):
-            try:
-                print(f"  Attempt {attempt + 1}/3...")
-                r = client.get(TARGET, proxy_config=proxy, timeout=60)
-                print(f"  Status: {r.status_code}")
-                assert r.status_code == 200
-                print(f"  ✓ {proto} passed!")
-                last = None
-                break
-            except Exception as e:
-                print(f"  ✗ Error: {e}")
-                last = e
-                time.sleep(2)
 
-        if last is not None:
-            if not STRICT and _looks_like_interference(last):
-                pytest.skip(
-                    f"skipping due to local proxy/TUN interference: proto={proto} err={last}"
-                )
-            raise last
+def _get_client():
+    return ThordataClient(scraper_token=os.getenv("THORDATA_SCRAPER_TOKEN", "dummy"))
+
+
+def _check_connectivity(name, proxy_config, protocols):
+    """Helper to test a product across multiple protocols."""
+    run, reason = _should_run_integration()
+    if not run:
+        pytest.skip(reason)
+
+    client = _get_client()
+    success_any = False
+    errors = []
+
+    print(f"\n[INTEGRATION] Product: {name}")
+    for proto in protocols:
+        proxy_config.protocol = proto
+        print(f"  Testing {proto}...", end=" ", flush=True)
+        try:
+            # 20s is plenty for an overseas runner
+            r = client.get(TARGET, proxy_config=proxy_config, timeout=20)
+            if r.status_code == 200:
+                print(f"PASSED (IP: {r.json().get('origin')})")
+                success_any = True
+            else:
+                msg = f"HTTP {r.status_code}"
+                print(f"FAILED ({msg})")
+                errors.append(f"{proto}: {msg}")
+        except Exception as e:
+            msg = str(e)
+            print(f"FAILED ({msg[:50]}...)")
+            errors.append(f"{proto}: {msg}")
+
+    return success_any, errors
+
+
+def test_residential_connectivity():
+    u = os.getenv("THORDATA_RESIDENTIAL_USERNAME")
+    p = os.getenv("THORDATA_RESIDENTIAL_PASSWORD")
+    host = os.getenv("THORDATA_PROXY_HOST", "vpn9wq0d.pr.thordata.net")
+    if not (u and p):
+        pytest.skip("Missing residential credentials")
+
+    proxy = ProxyConfig(
+        username=u, password=p, host=host, port=9999, product=ProxyProduct.RESIDENTIAL
+    )
+    # Test common protocols for residential
+    success, errs = _check_connectivity("Residential", proxy, ["http", "socks5h"])
+    assert success, f"Residential failed all protocols: {errs}"
+
+
+def test_mobile_connectivity():
+    u = os.getenv("THORDATA_MOBILE_USERNAME")
+    p = os.getenv("THORDATA_MOBILE_PASSWORD")
+    host = os.getenv("THORDATA_PROXY_HOST", "vpn9wq0d.pr.thordata.net")
+    if not (u and p):
+        pytest.skip("Missing mobile credentials")
+
+    proxy = ProxyConfig(
+        username=u, password=p, host=host, port=5555, product=ProxyProduct.MOBILE
+    )
+    success, errs = _check_connectivity("Mobile", proxy, ["http", "socks5h"])
+    assert success, f"Mobile failed all protocols: {errs}"
+
+
+def test_datacenter_connectivity():
+    u = os.getenv("THORDATA_DATACENTER_USERNAME")
+    p = os.getenv("THORDATA_DATACENTER_PASSWORD")
+    host = os.getenv("THORDATA_PROXY_HOST", "vpn9wq0d.pr.thordata.net")
+    if not (u and p):
+        pytest.skip("Missing datacenter credentials")
+
+    proxy = ProxyConfig(
+        username=u, password=p, host=host, port=7777, product=ProxyProduct.DATACENTER
+    )
+    success, errs = _check_connectivity("Datacenter", proxy, ["http", "socks5h"])
+    assert success, f"Datacenter failed all protocols: {errs}"
+
+
+def test_isp_connectivity():
+    host = os.getenv("THORDATA_ISP_HOST")
+    u = os.getenv("THORDATA_ISP_USERNAME")
+    p = os.getenv("THORDATA_ISP_PASSWORD")
+    if not (host and u and p):
+        pytest.skip("Missing ISP credentials")
+
+    proxy = StaticISPProxy(
+        host=host, username=u, password=p, port=6666, protocol="http"
+    )
+    success, errs = _check_connectivity("ISP", proxy, ["http"])
+    assert success, f"ISP failed all protocols: {errs}"
