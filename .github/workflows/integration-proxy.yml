@@ -22,8 +22,48 @@ jobs:
       - name: Install
         run: |
           python -m pip install -U pip
-          python -m pip install -e .
-          python -m pip install pytest
+          python -m pip install -e ".[dev]"
+
+      - name: Debug env presence (no secrets leaked)
+        env:
+          THORDATA_INTEGRATION: "true"
+
+          THORDATA_SCRAPER_TOKEN: ${{ secrets.THORDATA_SCRAPER_TOKEN }}
+          THORDATA_PUBLIC_TOKEN: ${{ secrets.THORDATA_PUBLIC_TOKEN }}
+          THORDATA_PUBLIC_KEY: ${{ secrets.THORDATA_PUBLIC_KEY }}
+
+          THORDATA_PROXY_HOST: ${{ secrets.THORDATA_PROXY_HOST }}
+          THORDATA_PROXY_PORT: ${{ secrets.THORDATA_PROXY_PORT }}
+          THORDATA_PROXY_PROTOCOL: ${{ secrets.THORDATA_PROXY_PROTOCOL }}
+
+          THORDATA_RESIDENTIAL_USERNAME: ${{ secrets.THORDATA_RESIDENTIAL_USERNAME }}
+          THORDATA_RESIDENTIAL_PASSWORD: ${{ secrets.THORDATA_RESIDENTIAL_PASSWORD }}
+
+          THORDATA_MOBILE_USERNAME: ${{ secrets.THORDATA_MOBILE_USERNAME }}
+          THORDATA_MOBILE_PASSWORD: ${{ secrets.THORDATA_MOBILE_PASSWORD }}
+
+          THORDATA_DATACENTER_USERNAME: ${{ secrets.THORDATA_DATACENTER_USERNAME }}
+          THORDATA_DATACENTER_PASSWORD: ${{ secrets.THORDATA_DATACENTER_PASSWORD }}
+
+          THORDATA_ISP_HOST: ${{ secrets.THORDATA_ISP_HOST }}
+          THORDATA_ISP_USERNAME: ${{ secrets.THORDATA_ISP_USERNAME }}
+          THORDATA_ISP_PASSWORD: ${{ secrets.THORDATA_ISP_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import os
+          keys = [
+            "THORDATA_INTEGRATION",
+            "THORDATA_SCRAPER_TOKEN","THORDATA_PUBLIC_TOKEN","THORDATA_PUBLIC_KEY",
+            "THORDATA_PROXY_HOST","THORDATA_PROXY_PORT","THORDATA_PROXY_PROTOCOL",
+            "THORDATA_RESIDENTIAL_USERNAME","THORDATA_RESIDENTIAL_PASSWORD",
+            "THORDATA_MOBILE_USERNAME","THORDATA_MOBILE_PASSWORD",
+            "THORDATA_DATACENTER_USERNAME","THORDATA_DATACENTER_PASSWORD",
+            "THORDATA_ISP_HOST","THORDATA_ISP_USERNAME","THORDATA_ISP_PASSWORD",
+          ]
+          for k in keys:
+            v = os.getenv(k, "")
+            print(f"{k}: {'SET' if v else 'MISSING'} (len={len(v)})")
+          PY
 
       - name: Run proxy integration tests
         env:
