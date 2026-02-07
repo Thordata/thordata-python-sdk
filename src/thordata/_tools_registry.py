@@ -4,6 +4,8 @@ Internal helpers for discovering and working with Web Scraper tools.
 These functions are intentionally kept **internal** (underscore-prefixed
 module name) so that we can evolve the public API surface in `client`
 and `async_client` without exposing the full reflection logic.
+
+This module uses caching to avoid repeated reflection overhead.
 """
 
 from __future__ import annotations
@@ -16,6 +18,21 @@ from typing import Any
 
 from .tools import ToolRequest, VideoToolRequest
 
+# Cache for tool classes and metadata
+_tools_classes_cache: list[type[ToolRequest]] | None = None
+_tools_metadata_cache: dict[str, list[dict[str, Any]]] = {}
+_tools_key_map: dict[str, type[ToolRequest]] = {}
+_tools_spider_map: dict[str, list[str]] = {}
+
+
+def _clear_cache() -> None:
+    """Clear the tools registry cache. Useful for testing."""
+    global _tools_classes_cache, _tools_metadata_cache, _tools_key_map, _tools_spider_map
+    _tools_classes_cache = None
+    _tools_metadata_cache.clear()
+    _tools_key_map.clear()
+    _tools_spider_map.clear()
+
 
 def _iter_tool_classes() -> Iterable[type[ToolRequest]]:
     """
@@ -23,8 +40,17 @@ def _iter_tool_classes() -> Iterable[type[ToolRequest]]:
     the `thordata.tools` namespace.
 
     This relies on `thordata.tools.__all__` and skips the base classes.
+
+    Uses caching to avoid repeated reflection overhead.
     """
+    global _tools_classes_cache
+
+    if _tools_classes_cache is not None:
+        return iter(_tools_classes_cache)
+
     from . import tools  # local import to avoid cycles at module import time
+
+    all_classes: list[type[ToolRequest]] = []
 
     for name in getattr(tools, "__all__", []):
         obj = getattr(tools, name, None)
@@ -34,7 +60,7 @@ def _iter_tool_classes() -> Iterable[type[ToolRequest]]:
         # Direct ToolRequest subclass exported in __all__
         if inspect.isclass(obj) and issubclass(obj, ToolRequest):
             if obj not in (ToolRequest, VideoToolRequest):
-                yield obj
+                all_classes.append(obj)
             continue
 
         # Namespace-style container (e.g. Amazon, GoogleMaps, etc.)
@@ -45,7 +71,10 @@ def _iter_tool_classes() -> Iterable[type[ToolRequest]]:
                     and issubclass(attr_val, ToolRequest)
                     and attr_val not in (ToolRequest, VideoToolRequest)
                 ):
-                    yield attr_val
+                    all_classes.append(attr_val)
+
+    _tools_classes_cache = all_classes
+    return iter(all_classes)
 
 
 def _tool_group_from_class(cls: type[ToolRequest]) -> str:
@@ -140,6 +169,9 @@ def list_tools_metadata(
     Args:
         group: Optional group filter (e.g. "ecommerce", "social")
         keyword: Optional keyword to match in key/spider_id/spider_name
+
+    Returns:
+        Tuple of (tools list, group counts dict)
     """
     all_tools: list[type[ToolRequest]] = list(_iter_tool_classes())
     out: list[dict[str, Any]] = []
@@ -174,14 +206,21 @@ def get_tool_class_by_key(tool_key: str) -> type[ToolRequest]:
 
     Pattern:
         "<group>.<spider_id>"
+
+    Uses caching to avoid repeated class lookups.
     """
-    canonical = resolve_tool_key(tool_key)
-    matches: dict[str, type[ToolRequest]] = {}
-    for cls in _iter_tool_classes():
-        key = _tool_key_from_class(cls).lower()
-        matches[key] = cls
-    cls = matches.get(canonical.lower())
-    if cls is None:  # pragma: no cover (defensive)
+    global _tools_key_map
+
+    # Build cache if empty
+    if not _tools_key_map:
+        for cls in _iter_tool_classes():
+            key = _tool_key_from_class(cls).lower()
+            _tools_key_map[key] = cls
+
+    canonical = resolve_tool_key(tool_key).lower()
+    cls = _tools_key_map.get(canonical)
+
+    if cls is None:
         raise KeyError(f"Unknown tool key: {tool_key!r}")
     return cls
 
@@ -194,34 +233,36 @@ def resolve_tool_key(tool_key: str) -> str:
       - canonical key: "ecommerce.amazon_product_by-url"
       - raw spider_id: "amazon_product_by-url" (must be unique across all tools)
 
+    Uses caching to avoid repeated lookups.
+
     Raises:
       - KeyError if unknown
       - KeyError with candidates if ambiguous
     """
+    global _tools_spider_map
+
     raw = (tool_key or "").strip()
     if not raw:
         raise KeyError("Tool key is empty")
 
     raw_norm = raw.lower()
 
-    # Build lookups once (small enough for SDK runtime)
-    full_map: dict[str, str] = {}
-    spider_map: dict[str, list[str]] = {}
-    for cls in _iter_tool_classes():
-        canonical = _tool_key_from_class(cls)
-        full_map[canonical.lower()] = canonical
-        spider_id = (getattr(cls, "SPIDER_ID", "") or "").lower()
-        if spider_id:
-            spider_map.setdefault(spider_id, []).append(canonical)
+    # Build cache if empty
+    if not _tools_spider_map:
+        for cls in _iter_tool_classes():
+            canonical = _tool_key_from_class(cls)
+            spider_id = (getattr(cls, "SPIDER_ID", "") or "").lower()
+            if spider_id:
+                _tools_spider_map.setdefault(spider_id, []).append(canonical)
 
     # 1) canonical form
     if "." in raw_norm:
-        if raw_norm in full_map:
-            return full_map[raw_norm]
-        raise KeyError(f"Unknown tool key: {tool_key!r}")
+        # Direct lookup in key map
+        canonical = get_tool_class_by_key(tool_key)
+        return _tool_key_from_class(canonical)
 
     # 2) raw spider_id
-    cands = spider_map.get(raw_norm) or []
+    cands = _tools_spider_map.get(raw_norm) or []
     if len(cands) == 1:
         return cands[0]
     if len(cands) > 1:

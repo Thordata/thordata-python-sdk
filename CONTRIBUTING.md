@@ -122,6 +122,9 @@ src/thordata/
 ├── retry.py              # Retry decorator and RetryConfig
 ├── serp_engines.py       # SERP namespace (sync/async)
 ├── _utils.py             # Internal: auth headers, parse_json, etc.
+├── _api_base.py         # Internal: Shared API base layer (URLs, validation)
+├── _tools_registry.py    # Internal: Tool discovery with caching
+├── env.py               # Internal: .env file loading (no python-dotenv)
 ├── core/
 │   ├── http_client.py    # Sync HTTP session + retry
 │   ├── async_http_client.py
@@ -174,6 +177,15 @@ pytest -m "not integration"
 
 # Run integration tests (requires .env + THORDATA_INTEGRATION=true)
 THORDATA_INTEGRATION=true pytest -m integration
+
+# Run full integration suite (SERP/Universal/Account/Locations/Tools/WebScraper)
+THORDATA_INTEGRATION=true pytest tests/test_integration_full.py -v
+
+# Run connectivity tests (Proxy/Expiration/Users/Batch)
+THORDATA_INTEGRATION=true pytest tests/test_integration_connectivity.py -v
+
+# Run tools registry tests (caching behavior)
+pytest tests/test_tools_registry.py -v
 ```
 
 ### Example Test

@@ -288,6 +288,43 @@ monitor = client.unlimited.get_server_monitor(
 - **Unit tests** (no network): `pytest` or `python -m coverage run -m pytest -p no:cov tests && python -m coverage report -m`
 - **Integration tests** (live API/proxy): Set `THORDATA_INTEGRATION=true` in `.env`; optional `THORDATA_UPSTREAM_PROXY` (e.g. Clash) if behind a firewall. See [CONTRIBUTING.md](CONTRIBUTING.md#-testing-guidelines).
 
+### Running Tests
+
+```bash
+# Run all unit tests
+pytest
+
+# Run with coverage
+coverage run -m pytest && coverage report -m
+
+# Run integration tests (requires real credentials)
+THORDATA_INTEGRATION=true pytest -m integration -v
+
+# Run specific test file
+pytest tests/test_tools_registry.py -v
+
+# Run specific test class
+pytest tests/test_integration_full.py::TestSerpIntegration -v
+```
+
+### Test Coverage
+
+The SDK includes comprehensive test coverage:
+
+- **Unit Tests**: Tests core logic, models, and utilities without network dependencies
+- **Integration Tests**: Tests real API connectivity and functionality (requires `THORDATA_INTEGRATION=true`)
+- **Registry Tests**: Tests tool discovery and caching mechanisms
+- **Connectivity Tests**: Tests proxy and API connectivity across all modules
+
+### Architecture Notes
+
+The SDK is built with a shared internal API layer to ensure consistency between sync and async clients:
+
+- **Shared Base Layer**: `src/thordata/_api_base.py` contains common logic for URL construction, header building, and validation
+- **Caching**: Tools registry uses caching to avoid repeated reflection overhead
+- **Unified .env Loading**: Uses `thordata.env.load_env_file` consistently across all modules
+- **Type Safety**: Full type annotations throughout the codebase for excellent IDE support
+
 ### 🧩 Local Self‑Check Flow (Developer Checklist)
 
 Complete end-to-end acceptance flow to ensure all core features work correctly:
