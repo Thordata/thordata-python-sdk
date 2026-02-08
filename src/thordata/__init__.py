@@ -5,13 +5,31 @@ Official Python client for Thordata's Proxy Network, SERP API,
 Universal Scraping API (Web Unlocker), and Web Scraper API.
 """
 
-__version__ = "1.8.3"
+__version__ = "1.8.4"
 __author__ = "Thordata Developer Team/Kael Odin"
 __email__ = "support@thordata.com"
 
 # Main clients
 from .async_client import AsyncThordataClient
 from .client import ThordataClient
+
+# Constants (for advanced usage)
+from .constants import (
+    APIBaseURL,
+    APIEndpoint,
+    APIErrorCode,
+    AuthMode,
+    ContentType,
+    EnvVar,
+    ErrorMessage,
+    HTTPMethod,
+    HTTPStatus,
+    RequestKey,
+    ResponseKey,
+)
+from .constants import (
+    TaskStatus as TaskStatusConstant,
+)
 
 # Enums (Legacy Import Path)
 from .enums import (
@@ -67,6 +85,9 @@ from .models import (
     VideoTaskConfig,
 )
 
+# Response wrapper
+from .response import APIResponse
+
 # Retry utilities
 from .retry import RetryConfig
 
@@ -116,4 +137,19 @@ __all__ = [
     "ThordataNotCollectedError",
     "RetryConfig",
     "load_env_file",
+    # Constants
+    "APIBaseURL",
+    "APIEndpoint",
+    "APIErrorCode",
+    "AuthMode",
+    "ContentType",
+    "EnvVar",
+    "ErrorMessage",
+    "HTTPMethod",
+    "HTTPStatus",
+    "RequestKey",
+    "ResponseKey",
+    "TaskStatusConstant",
+    # Response wrapper
+    "APIResponse",
 ]

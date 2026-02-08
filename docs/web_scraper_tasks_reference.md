@@ -1,6 +1,6 @@
 # Thordata Web Scraper Tasks API Reference (Python SDK)
 
-> **SDK Version**: 1.8.1  
+> **SDK Version**: 1.8.4  
 > **Last Updated**: 2025-01-21
 
 Thordata Web Scraper Tasks API provides pre-built scraping tools for 120+ platforms (Amazon, Google Maps, YouTube, TikTok, etc.). Tasks are created asynchronously and results are downloaded when ready.

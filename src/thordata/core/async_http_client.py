@@ -35,8 +35,18 @@ class AsyncThordataHttpSession:
 
     async def _ensure_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
+            # Configure connector with connection pooling for better performance
+            connector = aiohttp.TCPConnector(
+                limit=100,  # Total connection pool size
+                limit_per_host=30,  # Per-host connection limit
+                ttl_dns_cache=300,  # DNS cache TTL (5 minutes)
+                use_dns_cache=True,
+            )
             self._session = aiohttp.ClientSession(
-                timeout=self._timeout, headers=self._headers, trust_env=True
+                timeout=self._timeout,
+                headers=self._headers,
+                trust_env=True,
+                connector=connector,
             )
         return self._session
 

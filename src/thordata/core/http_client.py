@@ -25,8 +25,18 @@ class ThordataHttpSession:
         timeout: int = 30,
         retry_config: RetryConfig | None = None,
         trust_env: bool = True,
+        pool_connections: int = 10,
+        pool_maxsize: int = 10,
     ):
+        # Create adapter with connection pooling for better performance
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=pool_connections,
+            pool_maxsize=pool_maxsize,
+            max_retries=0,  # We handle retries ourselves
+        )
         self._session = requests.Session()
+        self._session.mount("http://", adapter)
+        self._session.mount("https://", adapter)
         self._session.trust_env = trust_env
         self._timeout = timeout
         self._retry_config = retry_config or RetryConfig()

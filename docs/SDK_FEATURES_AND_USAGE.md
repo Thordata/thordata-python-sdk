@@ -3,7 +3,7 @@
 > **Package**: `thordata-sdk`  
 > **Repository**: `thordata-python-sdk`  
 > **Python**: 3.9+  
-> **Version**: 1.8.1
+> **Version**: 1.8.4
 
 This document is the single entry point for the SDK capabilities and usage examples.
 

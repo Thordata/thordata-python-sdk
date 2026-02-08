@@ -39,6 +39,13 @@ from ._utils import (
     parse_json_response,
 )
 from .async_unlimited import AsyncUnlimitedNamespace
+from .constants import (
+    APIBaseURL,
+    ErrorMessage,
+)
+from .constants import (
+    AuthMode as AuthModeConstant,
+)
 
 # Import Core
 from .core.async_http_client import AsyncThordataHttpSession
@@ -48,6 +55,12 @@ from .exceptions import (
     ThordataNetworkError,
     ThordataTimeoutError,
     raise_for_code,
+)
+from .namespaces import (
+    AccountNamespace,
+    ProxyNamespace,
+    UniversalNamespace,
+    WebScraperNamespace,
 )
 from .retry import RetryConfig
 from .serp_engines import AsyncSerpNamespace
@@ -73,11 +86,11 @@ logger = logging.getLogger(__name__)
 class AsyncThordataClient:
     """The official asynchronous Python client for Thordata."""
 
-    # API Endpoints
-    BASE_URL = "https://scraperapi.thordata.com"
-    UNIVERSAL_URL = "https://webunlocker.thordata.com"
-    API_URL = "https://openapi.thordata.com/api/web-scraper-api"
-    LOCATIONS_URL = "https://openapi.thordata.com/api/locations"
+    # API Endpoints (using constants for better maintainability)
+    BASE_URL = APIBaseURL.SCRAPER_API
+    UNIVERSAL_URL = APIBaseURL.UNIVERSAL_API
+    API_URL = APIBaseURL.WEB_SCRAPER_API
+    LOCATIONS_URL = APIBaseURL.LOCATIONS_API
 
     def __init__(
         self,
@@ -106,8 +119,13 @@ class AsyncThordataClient:
         self._api_timeout = api_timeout
 
         self._auth_mode = auth_mode.lower()
-        if self._auth_mode not in ("bearer", "header_token"):
-            raise ThordataConfigError(f"Invalid auth_mode: {auth_mode}")
+        if self._auth_mode not in (
+            AuthModeConstant.BEARER,
+            AuthModeConstant.HEADER_TOKEN,
+        ):
+            raise ThordataConfigError(
+                ErrorMessage.INVALID_AUTH_MODE.format(mode=auth_mode)
+            )
 
         # Core Async HTTP Client
         self._http = AsyncThordataHttpSession(
@@ -171,6 +189,11 @@ class AsyncThordataClient:
         # Namespaces
         self.serp = AsyncSerpNamespace(self)
         self.unlimited = AsyncUnlimitedNamespace(self)
+        # New unified namespaces
+        self.universal = UniversalNamespace(self)
+        self.scraper = WebScraperNamespace(self)
+        self.account = AccountNamespace(self)
+        self.proxy = ProxyNamespace(self)
 
     async def __aenter__(self) -> AsyncThordataClient:
         await self._http._ensure_session()
@@ -190,7 +213,7 @@ class AsyncThordataClient:
 
     def _require_public_credentials(self) -> None:
         if not self.public_token or not self.public_key:
-            raise ThordataConfigError("public_token and public_key are required.")
+            raise ThordataConfigError(ErrorMessage.MISSING_PUBLIC_CREDENTIALS)
 
     # =========================================================================
     # Proxy Network Methods
@@ -464,7 +487,7 @@ class AsyncThordataClient:
         )
 
         # Check HTTP status code before processing response
-        if response.status >= 400:
+        if response.status != 200:
             # Try to get error message from response
             try:
                 resp_json = await response.json()
@@ -479,34 +502,75 @@ class AsyncThordataClient:
                     )
             except ValueError:
                 # If response is not JSON, raise with status code
-                from ..exceptions import ThordataAPIError
-
-                raise ThordataAPIError(
-                    f"Universal API returned HTTP {response.status}",
-                    code=response.status,
+                text = await response.text()
+                raise_for_code(
+                    f"Universal Error: HTTP {response.status}",
                     status_code=response.status,
-                ) from None
+                    payload={"raw": text[:500]},
+                )
 
+        # Process response with improved error handling
         try:
             resp_json = await response.json()
         except ValueError:
-            # If not JSON, return raw content based on format
+            # If not JSON, check if it's a valid HTML/text response
+            # This can happen when js_render=False and API returns raw HTML
+            content_type = response.headers.get("Content-Type", "").lower()
+            if "text/html" in content_type or "text/plain" in content_type:
+                # Return raw text content for non-JS rendering
+                text = await response.text()
+                if isinstance(request.output_format, list) or (
+                    isinstance(request.output_format, str)
+                    and "," in request.output_format
+                ):
+                    return {"html": text}
+                fmt = (
+                    request.output_format.lower()
+                    if isinstance(request.output_format, str)
+                    else str(request.output_format).lower()
+                )
+                return text if fmt == "html" else await response.read()
+            # For other non-JSON responses, return raw content
+            content = await response.read()
             if isinstance(request.output_format, list) or (
                 isinstance(request.output_format, str) and "," in request.output_format
             ):
-                return {"raw": await response.read()}
+                return {"raw": content}
             fmt = (
                 request.output_format.lower()
                 if isinstance(request.output_format, str)
                 else str(request.output_format).lower()
             )
-            return await response.read() if fmt == "png" else await response.text()
+            return content if fmt == "png" else await response.text()
 
+        # Handle JSON response with improved error checking
         if isinstance(resp_json, dict):
+            # Check for error codes even if HTTP status is 200
             code = resp_json.get("code")
             if code is not None and code != 200:
                 msg = extract_error_message(resp_json)
-                raise_for_code(f"Universal Error: {msg}", code=code, payload=resp_json)
+                raise_for_code(
+                    f"Universal Error: {msg}",
+                    status_code=response.status,
+                    code=code,
+                    payload=resp_json,
+                )
+
+            # Check for error messages in response
+            if "error" in resp_json or "message" in resp_json:
+                error_msg = resp_json.get("error") or resp_json.get("message")
+                # Only raise if it's actually an error (not a success message)
+                if (
+                    error_msg
+                    and "success" not in str(error_msg).lower()
+                    and (code is None or code != 200)
+                ):
+                    raise_for_code(
+                        f"Universal Error: {error_msg}",
+                        status_code=response.status,
+                        code=code,
+                        payload=resp_json,
+                    )
 
         # Handle multiple output formats
         if isinstance(request.output_format, list) or (
@@ -529,10 +593,17 @@ class AsyncThordataClient:
             if result:
                 return result
 
+        # Single format (backward compatibility)
         if "html" in resp_json:
             return resp_json["html"]
         if "png" in resp_json:
             return decode_base64_image(resp_json["png"])
+
+        # If response is a string (unexpected but possible), return it
+        if isinstance(resp_json, str):
+            return resp_json
+
+        # Last resort: return string representation
         return str(resp_json)
 
     async def universal_scrape_batch(

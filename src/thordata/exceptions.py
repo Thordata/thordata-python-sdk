@@ -96,6 +96,8 @@ class ThordataAPIError(ThordataError):
         code:         Application-level code from the Thordata API JSON response.
         payload:      Raw payload (dict/str) returned by the API.
         request_id:   Optional request ID for debugging with support.
+        url:          Optional URL that was requested (for debugging).
+        method:       Optional HTTP method used (for debugging).
     """
 
     # HTTP status codes that indicate this error type
@@ -109,21 +111,48 @@ class ThordataAPIError(ThordataError):
         code: int | None = None,
         payload: Any = None,
         request_id: str | None = None,
+        url: str | None = None,
+        method: str | None = None,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.code = code
         self.payload = payload
         self.request_id = request_id
+        self.url = url
+        self.method = method
 
     def __repr__(self) -> str:
-        return (
-            f"{self.__class__.__name__}("
-            f"message={self.message!r}, "
-            f"status_code={self.status_code}, "
-            f"code={self.code}, "
-            f"request_id={self.request_id!r})"
-        )
+        parts = [f"message={self.message!r}"]
+        if self.status_code is not None:
+            parts.append(f"status_code={self.status_code}")
+        if self.code is not None:
+            parts.append(f"code={self.code}")
+        if self.request_id:
+            parts.append(f"request_id={self.request_id!r}")
+        if self.url:
+            parts.append(f"url={self.url!r}")
+        if self.method:
+            parts.append(f"method={self.method!r}")
+        return f"{self.__class__.__name__}({', '.join(parts)})"
+
+    def __str__(self) -> str:
+        """Enhanced string representation with debugging context."""
+        parts = [self.message]
+        context = []
+        if self.status_code is not None:
+            context.append(f"HTTP {self.status_code}")
+        if self.code is not None and self.code != self.status_code:
+            context.append(f"API code {self.code}")
+        if self.request_id:
+            context.append(f"Request ID: {self.request_id}")
+        if self.url:
+            context.append(f"URL: {self.url}")
+        if self.method:
+            context.append(f"Method: {self.method}")
+        if context:
+            parts.append(f"({', '.join(context)})")
+        return " ".join(parts)
 
     @property
     def is_retryable(self) -> bool:
@@ -174,6 +203,13 @@ class ThordataRateLimitError(ThordataAPIError):
     ) -> None:
         super().__init__(message, **kwargs)
         self.retry_after = retry_after
+
+    def __str__(self) -> str:
+        """Enhanced string representation with retry information."""
+        base_str = super().__str__()
+        if self.retry_after is not None:
+            return f"{base_str} (Retry after {self.retry_after} seconds)"
+        return base_str
 
     @property
     def is_retryable(self) -> bool:
@@ -283,6 +319,8 @@ def raise_for_code(
     code: int | None = None,
     payload: Any = None,
     request_id: str | None = None,
+    url: str | None = None,
+    method: str | None = None,
 ) -> None:
     """
     Factory function to raise the appropriate exception based on status/code.
@@ -333,6 +371,8 @@ def raise_for_code(
         "code": code,
         "payload": payload,
         "request_id": final_request_id,
+        "url": url,
+        "method": method,
     }
 
     # --- Route to the correct exception class ---

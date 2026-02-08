@@ -46,7 +46,11 @@ def main() -> int:
     try:
         today = date.today()
         week_ago = today - timedelta(days=7)
-        stats = client.get_usage_statistics(week_ago, today)
+        # Use new namespace API (recommended)
+        stats = client.account.get_usage_statistics(
+            start_time=int(week_ago.strftime("%Y%m%d")),
+            end_time=int(today.strftime("%Y%m%d")),
+        )
         print("\n[Usage Statistics - Last 7 days]")
         print("  total_usage_traffic:", stats.total_usage_traffic)
         print("  traffic_balance:    ", stats.traffic_balance)
@@ -55,33 +59,40 @@ def main() -> int:
         print(f"Failed to fetch usage statistics: {e}")
 
     try:
-        traffic_balance = client.get_traffic_balance()
-        wallet_balance = client.get_wallet_balance()
+        # Use new namespace API (recommended)
+        balance = client.account.get_balance()
+        wallet_balance = client.get_wallet_balance()  # Keep old API for wallet
         print("\n[Balances]")
-        print("  Traffic balance:", traffic_balance)
+        print("  Traffic balance:", balance.get("traffic_balance", "N/A"))
         print("  Wallet balance: ", wallet_balance)
     except ThordataError as e:
         print(f"Failed to fetch balances: {e}")
 
     try:
-        users = client.list_proxy_users()
+        # Use new namespace API (recommended)
+        users = client.proxy.list_users()
         print("\n[Proxy Users - Residential]")
-        print("  Limit:", users.limit, "Remaining:", users.remaining_limit)
-        for u in users.users:
-            print(
-                f"  - {u.username} (status={u.status}, "
-                f"traffic_limit={u.traffic_limit}, usage={u.usage_traffic})"
-            )
+        if isinstance(users, dict) and "users" in users:
+            user_list = users["users"]
+            print(f"  Total: {len(user_list)} users")
+            for u in user_list[:5]:  # Show first 5
+                if isinstance(u, dict):
+                    print(f"  - {u.get('username', 'N/A')}")
+                else:
+                    print(f"  - {u}")
+        else:
+            print("  Users:", users)
     except ThordataError as e:
         print(f"Failed to list proxy users: {e}")
 
     try:
-        ips = client.list_whitelist_ips()
+        # Use new namespace API (recommended)
+        ips = client.proxy.list_whitelist_ips()
         print("\n[Whitelist IPs - Residential]")
         if not ips:
             print("  (no IPs)")
         else:
-            for ip in ips:
+            for ip in ips[:10]:  # Show first 10
                 print(f"  - {ip}")
     except ThordataError as e:
         print(f"Failed to list whitelist IPs: {e}")

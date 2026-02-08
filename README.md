@@ -19,7 +19,7 @@
 
 ## 📖 Introduction
 
-The **Thordata Python SDK v1.8.1** is a production-ready wrapper for Thordata's AI data infrastructure. It is architected for high reliability, strict type safety, and maximum performance.
+The **Thordata Python SDK v1.8.4** is a production-ready wrapper for Thordata's AI data infrastructure. It is architected for high reliability, strict type safety, and maximum performance.
 
 **Highlights**
 *   **🛡️ Bulletproof Networking**: Custom core handles `HTTP`, `HTTPS`, and `SOCKS5h` (Remote DNS) tunneling, solving common SSL/TLS handshake issues in complex network environments.

@@ -37,11 +37,11 @@ def main() -> int:
     url = os.getenv("THORDATA_DEMO_UNIVERSAL_URL", "https://www.example.com")
     print(f"Scraping Example via Universal API: {url}")
     try:
-        # Using output_format to trigger specific mock handler in tests.
-        html = client.universal_scrape(
+        # Use new namespace API (recommended)
+        html = client.universal.scrape(
             url=url,
             js_render=True,
-            output_format="html",
+            country="us",
         )
     except ThordataError as e:
         # Friendlier message for real-world usage

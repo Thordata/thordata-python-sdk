@@ -57,10 +57,21 @@ class UniversalScrapeRequest(ThordataBaseConfig):
             raise ValueError("wait must be between 0 and 100000 milliseconds")
 
     def to_payload(self) -> dict[str, Any]:
+        """
+        Convert request to API payload format.
+
+        Improved handling inspired by Oxylabs SDK:
+        - Always include js_render parameter (as string "True" or "False")
+        - Better handling of optional parameters
+        - Consistent string conversion for boolean values
+        """
         payload: dict[str, Any] = {
             "url": self.url,
-            "js_render": "True" if self.js_render else "False",
         }
+
+        # Always include js_render parameter (API expects string "True" or "False")
+        # This ensures consistent behavior whether js_render is True or False
+        payload["js_render"] = "True" if self.js_render else "False"
 
         # Handle output format (maps to 'type' parameter)
         if hasattr(self, "_output_formats") and self._output_formats:
@@ -72,6 +83,7 @@ class UniversalScrapeRequest(ThordataBaseConfig):
             else:
                 payload["type"] = ",".join([str(f).lower() for f in self.output_format])
 
+        # Optional parameters (only include if set)
         if self.header is not None:
             payload["header"] = "True" if self.header else "False"
         if self.country:
@@ -93,5 +105,6 @@ class UniversalScrapeRequest(ThordataBaseConfig):
         if self.cookies:
             payload["cookies"] = json.dumps(self.cookies)
 
+        # Merge any extra parameters (allows future API extensions)
         payload.update(self.extra_params)
         return payload

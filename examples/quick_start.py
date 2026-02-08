@@ -44,14 +44,11 @@ def test_universal_api(client: ThordataClient) -> bool:
     """Test Universal Scrape API."""
     print_section("2. Testing Universal Scrape API")
     try:
-        # Align with dashboard/curl defaults for Web Unlocker
-        # - js_render=True
-        # - type=html (mapped from output_format)
-        html = client.universal_scrape(
-            "https://www.example.com",
+        # Use new namespace API (recommended)
+        html = client.universal.scrape(
+            url="https://www.example.com",
             js_render=True,
-            output_format="html",
-            header=False,
+            country="us",
         )
         html_str = html if isinstance(html, str) else str(html)
         if html_str and len(html_str) > 200:
@@ -84,7 +81,8 @@ def test_web_scraper_api(client: ThordataClient) -> bool:
     try:
         from thordata.tools import Amazon
 
-        task_id = client.run_tool(Amazon.ProductByAsin(asin="B0BZYCJK89"))
+        # Use new namespace API (recommended)
+        task_id = client.scraper.run_tool(Amazon.ProductByAsin(asin="B0BZYCJK89"))
         print(f"[OK] Web Scraper API working - Task created: {task_id}")
         print("     (Task is running in background, check status later)")
         return True

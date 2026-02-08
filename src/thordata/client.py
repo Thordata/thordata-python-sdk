@@ -21,6 +21,7 @@ import requests
 import urllib3
 from requests.structures import CaseInsensitiveDict
 
+from ._common import build_api_urls
 from ._tools_registry import (
     get_tool_class_by_key as _get_tool_class_by_key,
 )
@@ -43,6 +44,13 @@ from ._utils import (
     extract_error_message,
     parse_json_response,
 )
+from .constants import (
+    APIBaseURL,
+    ErrorMessage,
+)
+from .constants import (
+    AuthMode as AuthModeConstant,
+)
 
 # Import Core Components
 from .core.http_client import ThordataHttpSession
@@ -56,9 +64,16 @@ from .core.tunnel import (
 from .enums import Engine
 from .exceptions import (
     ThordataConfigError,
+    ThordataError,
     ThordataNetworkError,
     ThordataTimeoutError,
     raise_for_code,
+)
+from .namespaces import (
+    AccountNamespace,
+    ProxyNamespace,
+    UniversalNamespace,
+    WebScraperNamespace,
 )
 from .retry import RetryConfig, with_retry
 from .serp_engines import SerpNamespace
@@ -99,11 +114,11 @@ def _parse_upstream_proxy() -> dict[str, Any] | None:
 class ThordataClient:
     """Main client for interacting with Thordata API services."""
 
-    # API Endpoints
-    BASE_URL = "https://scraperapi.thordata.com"
-    UNIVERSAL_URL = "https://webunlocker.thordata.com"
-    API_URL = "https://openapi.thordata.com/api/web-scraper-api"
-    LOCATIONS_URL = "https://openapi.thordata.com/api/locations"
+    # API Endpoints (using constants for better maintainability)
+    BASE_URL = APIBaseURL.SCRAPER_API
+    UNIVERSAL_URL = APIBaseURL.UNIVERSAL_API
+    API_URL = APIBaseURL.WEB_SCRAPER_API
+    LOCATIONS_URL = APIBaseURL.LOCATIONS_API
 
     def __init__(
         self,
@@ -132,9 +147,12 @@ class ThordataClient:
         self._retry_config = retry_config or RetryConfig()
 
         self._auth_mode = auth_mode.lower()
-        if self._auth_mode not in ("bearer", "header_token"):
+        if self._auth_mode not in (
+            AuthModeConstant.BEARER,
+            AuthModeConstant.HEADER_TOKEN,
+        ):
             raise ThordataConfigError(
-                f"Invalid auth_mode: {auth_mode}. Must be 'bearer' or 'header_token'."
+                ErrorMessage.INVALID_AUTH_MODE.format(mode=auth_mode)
             )
 
         # Initialize Core HTTP Client for API calls
@@ -147,69 +165,39 @@ class ThordataClient:
         self._proxy_session.trust_env = False
         self._proxy_managers: dict[str, urllib3.PoolManager] = {}
 
-        # Base URLs Configuration
-        scraperapi_base = (
-            scraperapi_base_url
-            or os.getenv("THORDATA_SCRAPERAPI_BASE_URL")
-            or self.BASE_URL
-        ).rstrip("/")
-
-        universalapi_base = (
-            universalapi_base_url
-            or os.getenv("THORDATA_UNIVERSALAPI_BASE_URL")
-            or self.UNIVERSAL_URL
-        ).rstrip("/")
-
-        web_scraper_api_base = (
-            web_scraper_api_base_url
-            or os.getenv("THORDATA_WEB_SCRAPER_API_BASE_URL")
-            or self.API_URL
-        ).rstrip("/")
-
-        locations_base = (
-            locations_base_url
-            or os.getenv("THORDATA_LOCATIONS_BASE_URL")
-            or self.LOCATIONS_URL
-        ).rstrip("/")
-
-        self._gateway_base_url = os.getenv(
-            "THORDATA_GATEWAY_BASE_URL", "https://openapi.thordata.com/api/gateway"
-        )
-        self._child_base_url = os.getenv(
-            "THORDATA_CHILD_BASE_URL", "https://openapi.thordata.com/api/child"
+        # Build all API URLs using shared utility (reduces code duplication)
+        urls = build_api_urls(
+            scraperapi_base_url=scraperapi_base_url,
+            universalapi_base_url=universalapi_base_url,
+            web_scraper_api_base_url=web_scraper_api_base_url,
+            locations_base_url=locations_base_url,
         )
 
-        # URL Construction
-        self._serp_url = f"{scraperapi_base}/request"
-        self._builder_url = f"{scraperapi_base}/builder"
-        self._video_builder_url = f"{scraperapi_base}/video_builder"
-        self._universal_url = f"{universalapi_base}/request"
-
-        self._status_url = f"{web_scraper_api_base}/tasks-status"
-        self._download_url = f"{web_scraper_api_base}/tasks-download"
-        self._list_url = f"{web_scraper_api_base}/tasks-list"
-
-        self._locations_base_url = locations_base
-
-        # Determine shared API base from locations URL
-        shared_api_base = locations_base.replace("/locations", "")
-        self._usage_stats_url = f"{shared_api_base}/account/usage-statistics"
-        self._proxy_users_url = f"{shared_api_base}/proxy-users"
-
-        whitelist_base = os.getenv(
-            "THORDATA_WHITELIST_BASE_URL", "https://openapi.thordata.com/api"
-        )
-        self._whitelist_url = f"{whitelist_base}/whitelisted-ips"
-
-        proxy_api_base = os.getenv(
-            "THORDATA_PROXY_API_BASE_URL", "https://openapi.thordata.com/api"
-        )
-        self._proxy_list_url = f"{proxy_api_base}/proxy/proxy-list"
-        self._proxy_expiration_url = f"{proxy_api_base}/proxy/expiration-time"
+        # Assign URLs to instance variables
+        self._serp_url = urls["serp_url"]
+        self._builder_url = urls["builder_url"]
+        self._video_builder_url = urls["video_builder_url"]
+        self._universal_url = urls["universal_url"]
+        self._status_url = urls["status_url"]
+        self._download_url = urls["download_url"]
+        self._list_url = urls["list_url"]
+        self._locations_base_url = urls["locations_base_url"]
+        self._usage_stats_url = urls["usage_stats_url"]
+        self._proxy_users_url = urls["proxy_users_url"]
+        self._whitelist_url = urls["whitelist_url"]
+        self._proxy_list_url = urls["proxy_list_url"]
+        self._proxy_expiration_url = urls["proxy_expiration_url"]
+        self._gateway_base_url = urls["gateway_base_url"]
+        self._child_base_url = urls["child_base_url"]
 
         # Initialize Namespaces
         self.serp = SerpNamespace(self)
         self.unlimited = UnlimitedNamespace(self)
+        # New unified namespaces
+        self.universal = UniversalNamespace(self)
+        self.scraper = WebScraperNamespace(self)
+        self.account = AccountNamespace(self)
+        self.proxy = ProxyNamespace(self)
 
     # =========================================================================
     # Context Manager
@@ -249,9 +237,7 @@ class ThordataClient:
 
     def _require_public_credentials(self) -> None:
         if not self.public_token or not self.public_key:
-            raise ThordataConfigError(
-                "public_token and public_key are required for this operation."
-            )
+            raise ThordataConfigError(ErrorMessage.MISSING_PUBLIC_CREDENTIALS)
 
     # =========================================================================
     # Proxy Network Methods
@@ -366,7 +352,13 @@ class ThordataClient:
                 code = data.get("code")
                 if code is not None and code != 200:
                     msg = extract_error_message(data)
-                    raise_for_code(f"SERP Error: {msg}", code=code, payload=data)
+                    raise_for_code(
+                        f"SERP Error: {msg}",
+                        code=code,
+                        payload=data,
+                        url=self._serp_url,
+                        method="POST",
+                    )
             return parse_json_response(data)
 
         return {"html": response.text}
@@ -530,11 +522,37 @@ class ThordataClient:
         payload = request.to_payload()
         headers = build_auth_headers(self.scraper_token, mode=self._auth_mode)
 
-        response = self._api_request_with_retry(
-            "POST", self._universal_url, data=payload, headers=headers
-        )
-        response.raise_for_status()
-        return self._process_universal_response(response, request.output_format)
+        try:
+            response = self._api_request_with_retry(
+                "POST", self._universal_url, data=payload, headers=headers
+            )
+            # Check status code before processing
+            if response.status_code != 200:
+                # Try to extract error message from response
+                try:
+                    error_data = response.json()
+                    msg = extract_error_message(error_data)
+                    raise_for_code(
+                        f"Universal Error: {msg}",
+                        status_code=response.status_code,
+                        code=error_data.get("code"),
+                        payload=error_data,
+                        url=self._universal_url,
+                        method="POST",
+                    )
+                except (ValueError, KeyError):
+                    # If response is not JSON, raise with status code
+                    raise_for_code(
+                        f"Universal Error: HTTP {response.status_code}",
+                        status_code=response.status_code,
+                        payload={"raw": response.text[:500]},
+                        url=self._universal_url,
+                        method="POST",
+                    )
+            return self._process_universal_response(response, request.output_format)
+        except requests.exceptions.RequestException as e:
+            # Wrap request exceptions with more context
+            raise ThordataError(f"Universal API request failed: {e}") from e
 
     def universal_scrape_batch(
         self,
@@ -873,7 +891,13 @@ class ThordataClient:
         response.raise_for_status()
         data = response.json()
         if data.get("code") != 200:
-            raise_for_code("Task creation failed", code=data.get("code"), payload=data)
+            raise_for_code(
+                "Task creation failed",
+                code=data.get("code"),
+                payload=data,
+                url=self._builder_url,
+                method="POST",
+            )
         return data["data"]["task_id"]
 
     def create_video_task(
@@ -912,7 +936,11 @@ class ThordataClient:
         data = response.json()
         if data.get("code") != 200:
             raise_for_code(
-                "Video task creation failed", code=data.get("code"), payload=data
+                "Video task creation failed",
+                code=data.get("code"),
+                payload=data,
+                url=self._video_builder_url,
+                method="POST",
             )
         return data["data"]["task_id"]
 
@@ -929,7 +957,13 @@ class ThordataClient:
         response.raise_for_status()
         data = response.json()
         if data.get("code") != 200:
-            raise_for_code("Task status error", code=data.get("code"), payload=data)
+            raise_for_code(
+                "Task status error",
+                code=data.get("code"),
+                payload=data,
+                url=self._status_url,
+                method="POST",
+            )
 
         items = data.get("data") or []
         for item in items:
@@ -957,7 +991,11 @@ class ThordataClient:
 
         if data.get("code") != 200:
             raise_for_code(
-                "Get latest task status failed", code=data.get("code"), payload=data
+                "Get latest task status failed",
+                code=data.get("code"),
+                payload=data,
+                url=f"{base}{endpoint}",
+                method="POST",
             )
 
         return data.get("data", {})
@@ -982,7 +1020,13 @@ class ThordataClient:
         data = response.json()
         if data.get("code") == 200 and data.get("data"):
             return data["data"]["download"]
-        raise_for_code("Get result failed", code=data.get("code"), payload=data)
+        raise_for_code(
+            "Get result failed",
+            code=data.get("code"),
+            payload=data,
+            url=self._download_url,
+            method="POST",
+        )
         return ""
 
     def list_tasks(self, page: int = 1, size: int = 20) -> dict[str, Any]:
@@ -998,7 +1042,13 @@ class ThordataClient:
         response.raise_for_status()
         data = response.json()
         if data.get("code") != 200:
-            raise_for_code("List tasks failed", code=data.get("code"), payload=data)
+            raise_for_code(
+                "List tasks failed",
+                code=data.get("code"),
+                payload=data,
+                url=self._list_url,
+                method="POST",
+            )
         return data.get("data", {"count": 0, "list": []})
 
     def wait_for_task(
@@ -1116,7 +1166,13 @@ class ThordataClient:
         response.raise_for_status()
         data = response.json()
         if data.get("code") != 200:
-            raise_for_code("Usage stats error", code=data.get("code"), payload=data)
+            raise_for_code(
+                "Usage stats error",
+                code=data.get("code"),
+                payload=data,
+                url=self._usage_stats_url,
+                method="GET",
+            )
         return UsageStatistics.from_dict(data.get("data", data))
 
     def get_traffic_balance(self) -> float:
@@ -1130,7 +1186,11 @@ class ThordataClient:
         data = response.json()
         if data.get("code") != 200:
             raise_for_code(
-                "Get traffic balance failed", code=data.get("code"), payload=data
+                "Get traffic balance failed",
+                code=data.get("code"),
+                payload=data,
+                url=f"{self._locations_base_url.replace('/locations', '')}/account/traffic-balance",
+                method="GET",
             )
         return float(data.get("data", {}).get("traffic_balance", 0))
 
@@ -1177,7 +1237,13 @@ class ThordataClient:
         response.raise_for_status()
         data = response.json()
         if data.get("code") != 200:
-            raise_for_code("Get user usage failed", code=data.get("code"), payload=data)
+            raise_for_code(
+                "Get user usage failed",
+                code=data.get("code"),
+                payload=data,
+                url=f"{self._proxy_users_url}/usage-statistics",
+                method="GET",
+            )
         return data.get("data", [])
 
     def get_proxy_user_usage_hour(
@@ -1214,7 +1280,11 @@ class ThordataClient:
         data = response.json()
         if data.get("code") != 200:
             raise_for_code(
-                "Get hourly usage failed", code=data.get("code"), payload=data
+                "Get hourly usage failed",
+                code=data.get("code"),
+                payload=data,
+                url=f"{self._proxy_users_url}/usage-statistics-hour",
+                method="GET",
             )
 
         # API returns { "data": { "data": [...] } } structure
@@ -1607,13 +1677,33 @@ class ThordataClient:
     def _process_universal_response(
         self, response: requests.Response, output_format: str | list[str]
     ) -> str | bytes | dict[str, str | bytes]:
-        """Process universal scrape response. Returns single value or dict if multiple formats requested."""
+        """Process universal scrape response. Returns single value or dict if multiple formats requested.
+
+        Improved error handling inspired by Oxylabs SDK:
+        - Better handling of HTTP 200 responses with error codes
+        - More robust JSON parsing with fallback to raw content
+        - Clearer error messages
+        """
+        # First, try to parse as JSON
+        resp_json = None
         try:
             resp_json = response.json()
         except ValueError:
-            # If not JSON, return raw content based on format
+            # If not JSON, check if it's a valid HTML/text response
+            # This can happen when js_render=False and API returns raw HTML
+            content_type = response.headers.get("Content-Type", "").lower()
+            if "text/html" in content_type or "text/plain" in content_type:
+                # Return raw text content for non-JS rendering
+                if isinstance(output_format, list):
+                    return {"html": response.text}
+                fmt = (
+                    output_format.lower()
+                    if isinstance(output_format, str)
+                    else str(output_format).lower()
+                )
+                return response.text if fmt == "html" else response.content
+            # For other non-JSON responses, return raw content
             if isinstance(output_format, list):
-                # Multiple formats requested but got non-JSON response
                 return {"raw": response.content}
             fmt = (
                 output_format.lower()
@@ -1622,11 +1712,34 @@ class ThordataClient:
             )
             return response.content if fmt == "png" else response.text
 
+        # Handle JSON response
         if isinstance(resp_json, dict):
+            # Check for error codes even if HTTP status is 200
             code = resp_json.get("code")
             if code is not None and code != 200:
                 msg = extract_error_message(resp_json)
-                raise_for_code(f"Universal Error: {msg}", code=code, payload=resp_json)
+                raise_for_code(
+                    f"Universal Error: {msg}",
+                    status_code=response.status_code,
+                    code=code,
+                    payload=resp_json,
+                )
+
+            # Check for error messages in response
+            if "error" in resp_json or "message" in resp_json:
+                error_msg = resp_json.get("error") or resp_json.get("message")
+                # Only raise if it's actually an error (not a success message)
+                if (
+                    error_msg
+                    and "success" not in str(error_msg).lower()
+                    and (code is None or code != 200)
+                ):
+                    raise_for_code(
+                        f"Universal Error: {error_msg}",
+                        status_code=response.status_code,
+                        code=code,
+                        payload=resp_json,
+                    )
 
         # Handle multiple output formats
         if isinstance(output_format, list) or (
@@ -1655,6 +1768,12 @@ class ThordataClient:
             return resp_json["html"]
         if "png" in resp_json:
             return decode_base64_image(resp_json["png"])
+
+        # If response is a string (unexpected but possible), return it
+        if isinstance(resp_json, str):
+            return resp_json
+
+        # Last resort: return string representation
         return str(resp_json)
 
     def get_browser_connection_url(
