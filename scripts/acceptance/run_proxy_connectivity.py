@@ -9,7 +9,7 @@ Goals:
 
 This script does NOT modify account state.
 
-Key points from your proven green run (examples/full_acceptance_test.py):
+Key points from a proven green run (historical comprehensive acceptance suite):
 - Residential may require a dedicated entry host like vpnXXXX.pr.thordata.net.
   If you know it, set THORDATA_RESIDENTIAL_PROXY_HOST accordingly.
 

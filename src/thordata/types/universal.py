@@ -60,7 +60,7 @@ class UniversalScrapeRequest(ThordataBaseConfig):
         """
         Convert request to API payload format.
 
-        Improved handling inspired by Oxylabs SDK:
+        Improved handling:
         - Always include js_render parameter (as string "True" or "False")
         - Better handling of optional parameters
         - Consistent string conversion for boolean values

@@ -6,7 +6,7 @@ This directory contains comprehensive documentation for the Thordata Python SDK.
 
 ### Core APIs
 
-1. **[SERP API Reference](serp_reference.md)** - Quick reference for search engine APIs
+1. **[SERP API Reference](serp_reference.md)** - Search engine APIs
    - Google, Bing, Yandex, DuckDuckGo
    - SDK-aligned parameter mapping
    - Common usage patterns
@@ -35,31 +35,11 @@ This directory contains comprehensive documentation for the Thordata Python SDK.
    - Video download tasks
    - Batch operations
 
-## Alignment & Format Documentation
+## SDK Guide
 
-6. **[API Alignment Summary](API_ALIGNMENT_SUMMARY.md)** - Complete alignment status
-   - All four APIs alignment status
-   - Feature comparison
-   - Documentation status
-   - Recommendations
+6. **[SDK Features & Usage](SDK_FEATURES_AND_USAGE.md)** - End-to-end guide
 
-7. **[Output Format Alignment](OUTPUT_FORMAT_ALIGNMENT.md)** - Dashboard output alignment
-   - JSON format
-   - CSV format
-   - Dictionary format
-   - Format conversion tools
-
-## Development Documentation
-
-8. **[Git Operations Guide](GIT_OPERATIONS_GUIDE.md)** - Git workflow guide
-   - Step-by-step commit instructions
-   - Branch strategy
-   - Common issues and solutions
-
-9. **[Cleanup Summary](CLEANUP_SUMMARY.md)** - Code cleanup and optimization summary
-   - Completed tasks
-   - Code statistics
-   - Verification results
+7. **[Tool Coverage Matrix (Generated)](TOOL_COVERAGE_MATRIX.generated.md)** - Tool coverage overview
 
 ## Quick Links
 

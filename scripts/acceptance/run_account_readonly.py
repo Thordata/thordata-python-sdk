@@ -6,7 +6,7 @@ Covers:
 - get_wallet_balance
 - get_usage_statistics (optional, requires date range)
 
-This is based on examples/full_acceptance_test.py but kept strictly read-only.
+This is based on a historical comprehensive acceptance suite, but kept strictly read-only.
 """
 
 from __future__ import annotations

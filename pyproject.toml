@@ -87,7 +87,6 @@ include = '\.pyi?$'
 [tool.ruff]
 line-length = 88
 target-version = "py39"
-extend-exclude = ["sdk-spec"]
 
 [tool.ruff.lint]
 select = [

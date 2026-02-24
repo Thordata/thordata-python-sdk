@@ -1679,7 +1679,7 @@ class ThordataClient:
     ) -> str | bytes | dict[str, str | bytes]:
         """Process universal scrape response. Returns single value or dict if multiple formats requested.
 
-        Improved error handling inspired by Oxylabs SDK:
+        Improved error handling:
         - Better handling of HTTP 200 responses with error codes
         - More robust JSON parsing with fallback to raw content
         - Clearer error messages

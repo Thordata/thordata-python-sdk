@@ -11,7 +11,7 @@ Strict pass criteria:
 - Any Failed/Error/Cancelled status is treated as a failure.
 
 Notes:
-- Aligns with examples/full_acceptance_test.py: use a stable sample video and
+- Aligns with a historical comprehensive acceptance suite: use a stable sample video and
   explicit CommonSettings for better success rate.
 - When a task fails, we still try to fetch task result URL (if any) to aid
   debugging.
@@ -133,7 +133,7 @@ def main() -> bool:
         api_timeout=cfg.timeout,
     )
 
-    # Align with examples/full_acceptance_test.py
+    # Align with a historical comprehensive acceptance suite.
     # Use a stable public sample video URL.
     video_url = "https://www.youtube.com/watch?v=jNQXAC9IVRw"
     video_id = "jNQXAC9IVRw"
