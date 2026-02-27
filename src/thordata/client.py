@@ -89,6 +89,7 @@ from .types import (
     ProxyUserList,
     ScraperTaskConfig,
     SerpRequest,
+    SerpTypedRequest,
     UniversalScrapeRequest,
     UsageStatistics,
     VideoTaskConfig,
@@ -301,14 +302,26 @@ class ThordataClient:
         *,
         engine: Engine | str = Engine.GOOGLE,
         num: int = 10,
+        start: int = 0,
         country: str | None = None,
         language: str | None = None,
+        google_domain: str | None = None,
+        countries_filter: str | None = None,
+        languages_filter: str | None = None,
+        location: str | None = None,
+        uule: str | None = None,
         search_type: str | None = None,
+        safe_search: bool | None = None,
+        time_filter: str | None = None,
+        no_autocorrect: bool = False,
+        filter_duplicates: bool | None = None,
         device: str | None = None,
         render_js: bool | None = None,
         no_cache: bool | None = None,
         output_format: str = "json",
         ai_overview: bool = False,
+        ludocid: str | None = None,
+        kgmid: str | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         engine_str = engine.value if isinstance(engine, Engine) else engine.lower()
@@ -317,14 +330,26 @@ class ThordataClient:
             query=query,
             engine=engine_str,
             num=num,
+            start=start,
             country=country,
             language=language,
+            google_domain=google_domain,
+            countries_filter=countries_filter,
+            languages_filter=languages_filter,
+            location=location,
+            uule=uule,
             search_type=search_type,
+            safe_search=safe_search,
+            time_filter=time_filter,
+            no_autocorrect=no_autocorrect,
+            filter_duplicates=filter_duplicates,
             device=device,
             render_js=render_js,
             no_cache=no_cache,
             output_format=output_format,
             ai_overview=ai_overview,
+            ludocid=ludocid,
+            kgmid=kgmid,
             extra_params=kwargs,
         )
         return self.serp_search_advanced(request)
@@ -362,6 +387,15 @@ class ThordataClient:
             return parse_json_response(data)
 
         return {"html": response.text}
+
+    def serp_search_typed(self, request: SerpTypedRequest) -> dict[str, Any]:
+        """
+        Execute a strongly-typed SERP request.
+
+        This keeps the SDK minimal while offering better DX for engine/mode-specific
+        required parameters with upfront validation.
+        """
+        return self.serp_search_advanced(request.to_serp_request())
 
     def serp_batch_search(
         self,

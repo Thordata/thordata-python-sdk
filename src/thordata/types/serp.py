@@ -159,11 +159,15 @@ class SerpRequest(ThordataBaseConfig):
     }
 
     def to_payload(self) -> dict[str, Any]:
-        engine = self.engine.lower()
-        payload: dict[str, Any] = {
-            "engine": engine,
-            "num": str(self.num),
-        }
+        # Allow both string and Enum values for engine (for backwards compatibility).
+        raw_engine = self.engine
+        if isinstance(raw_engine, Enum):
+            engine_str = str(raw_engine.value)
+        else:
+            engine_str = str(raw_engine)
+        engine = engine_str.lower()
+
+        payload: dict[str, Any] = {"engine": engine}
 
         # JSON output handling
         # Dashboard mapping: json=1 (json), json=3 (html), json=4 (light json)
@@ -196,12 +200,37 @@ class SerpRequest(ThordataBaseConfig):
         # Basic fields
         if self.google_domain:
             payload["google_domain"] = self.google_domain
-        if self.start > 0:
-            payload["start"] = str(self.start)
-        if self.country:
-            payload["gl"] = self.country.lower()
-        if self.language:
-            payload["hl"] = self.language.lower()
+        # Pagination + localization differ per engine family
+        if engine.startswith("bing"):
+            # Bing uses 1-based 'first' and 'count'
+            if self.start > 0:
+                payload["first"] = str(self.start + 1)
+            payload["count"] = str(self.num)
+            if self.country:
+                payload["cc"] = self.country.lower()
+            if self.language:
+                payload["mkt"] = self.language
+        elif engine == "yandex":
+            # Yandex supports 'lang' (UI language) but also has its own 'lr' region param.
+            if self.language:
+                payload["lang"] = self.language
+            # Yandex pagination is 'p' (page index); keep 'start/num' out unless user passes via extra_params.
+        elif engine == "duckduckgo":
+            # DuckDuckGo supports 'start' but has no standard 'num' param in our docs.
+            if self.start > 0:
+                payload["start"] = str(self.start)
+            if self.language:
+                # Best-effort: DuckDuckGo uses 'kl' for region/lang (e.g. 'us-en').
+                payload["kl"] = self.language
+        else:
+            # Google (+ other engines that behave similarly)
+            payload["num"] = str(self.num)
+            if self.start > 0:
+                payload["start"] = str(self.start)
+            if self.country:
+                payload["gl"] = self.country.lower()
+            if self.language:
+                payload["hl"] = self.language.lower()
         if self.countries_filter:
             payload["cr"] = self.countries_filter
         if self.languages_filter:
@@ -212,21 +241,21 @@ class SerpRequest(ThordataBaseConfig):
             payload["uule"] = self.uule
 
         # Search Type (tbm)
-        if self.search_type:
+        if self.search_type and engine.startswith("google"):
             val = self.search_type.lower()
             payload["tbm"] = self.SEARCH_TYPE_MAP.get(val, val)
 
         # Filters
-        if self.safe_search is not None:
+        if self.safe_search is not None and engine.startswith("google"):
             payload["safe"] = "active" if self.safe_search else "off"
 
-        if self.time_filter:
+        if self.time_filter and engine.startswith("google"):
             val = self.time_filter.lower()
             payload["tbs"] = self.TIME_FILTER_MAP.get(val, val)
 
-        if self.no_autocorrect:
+        if self.no_autocorrect and engine.startswith("google"):
             payload["nfpr"] = "1"
-        if self.filter_duplicates is not None:
+        if self.filter_duplicates is not None and engine.startswith("google"):
             payload["filter"] = "1" if self.filter_duplicates else "0"
 
         # Device & Rendering
@@ -254,3 +283,340 @@ class SerpRequest(ThordataBaseConfig):
         # Merge extras
         payload.update(self.extra_params)
         return payload
+
+
+# =============================================================================
+# Strongly-Typed SERP Requests (minimal & extensible)
+# =============================================================================
+#
+# Design goals:
+# - Keep the core SDK minimal (no heavy validation deps like pydantic).
+# - Provide strong typing + upfront validation for REQUIRED parameters per engine/mode.
+# - Keep full flexibility via `extra_params` pass-through for long-tail parameters.
+
+
+@dataclass
+class SerpTypedRequest(ThordataBaseConfig):
+    """
+    Base class for strongly-typed SERP requests.
+
+    Subclasses should define:
+    - engine (fixed string)
+    - required fields for that engine/mode
+    - optional fields as needed
+    """
+
+    # Common options
+    num: int = 10
+    start: int = 0
+    country: str | None = None
+    language: str | None = None
+    google_domain: str | None = None
+    countries_filter: str | None = None
+    languages_filter: str | None = None
+    location: str | None = None
+    uule: str | None = None
+    search_type: str | None = None
+    safe_search: bool | None = None
+    time_filter: str | None = None
+    no_autocorrect: bool = False
+    filter_duplicates: bool | None = None
+    device: str | None = None
+    render_js: bool | None = None
+    no_cache: bool | None = None
+    output_format: str = "json"
+    ai_overview: bool = False
+    ludocid: str | None = None
+    kgmid: str | None = None
+
+    # Any extra API params not explicitly modeled
+    extra_params: dict[str, Any] = field(default_factory=dict)
+
+    # Subclass must override
+    engine: str = "google"
+
+    def _validate_common(self) -> None:
+        if self.num < 1:
+            raise ValueError("num must be >= 1")
+        if self.start < 0:
+            raise ValueError("start must be >= 0")
+
+    def _build_serp_request(self, *, query: str) -> SerpRequest:
+        self._validate_common()
+        return SerpRequest(
+            query=query,
+            engine=self.engine,
+            num=self.num,
+            start=self.start,
+            country=self.country,
+            language=self.language,
+            google_domain=self.google_domain,
+            countries_filter=self.countries_filter,
+            languages_filter=self.languages_filter,
+            location=self.location,
+            uule=self.uule,
+            search_type=self.search_type,
+            safe_search=self.safe_search,
+            time_filter=self.time_filter,
+            no_autocorrect=self.no_autocorrect,
+            filter_duplicates=self.filter_duplicates,
+            device=self.device,
+            render_js=self.render_js,
+            no_cache=self.no_cache,
+            output_format=self.output_format,
+            ai_overview=self.ai_overview,
+            ludocid=self.ludocid,
+            kgmid=self.kgmid,
+            extra_params=dict(self.extra_params),
+        )
+
+    def to_serp_request(self) -> SerpRequest:
+        """
+        Convert this typed request into a `SerpRequest`.
+
+        Subclasses must implement this and should call `_build_serp_request()`.
+        """
+        raise NotImplementedError("Subclasses must implement to_serp_request()")
+
+
+# --- Google ---
+
+
+@dataclass
+class GoogleSearchRequest(SerpTypedRequest):
+    engine: str = "google"
+    query: str = ""
+
+    def __post_init__(self) -> None:
+        self._validate_common()
+        if not self.query.strip():
+            raise ValueError("GoogleSearchRequest.query is required")
+
+    def to_serp_request(self) -> SerpRequest:  # type: ignore[override]
+        return super()._build_serp_request(query=self.query)
+
+
+@dataclass
+class GoogleNewsRequest(GoogleSearchRequest):
+    engine: str = "google_news"
+
+
+@dataclass
+class GoogleShoppingRequest(GoogleSearchRequest):
+    engine: str = "google_shopping"
+
+
+@dataclass
+class GoogleLocalRequest(GoogleSearchRequest):
+    engine: str = "google_local"
+
+
+@dataclass
+class GoogleVideosRequest(GoogleSearchRequest):
+    engine: str = "google_videos"
+
+
+@dataclass
+class GoogleImagesRequest(GoogleSearchRequest):
+    engine: str = "google_images"
+
+
+@dataclass
+class GoogleTrendsRequest(GoogleSearchRequest):
+    engine: str = "google_trends"
+
+
+@dataclass
+class GoogleHotelsRequest(GoogleSearchRequest):
+    engine: str = "google_hotels"
+
+
+@dataclass
+class GooglePlayRequest(GoogleSearchRequest):
+    engine: str = "google_play"
+
+
+@dataclass
+class GoogleJobsRequest(GoogleSearchRequest):
+    engine: str = "google_jobs"
+
+
+@dataclass
+class GoogleScholarRequest(GoogleSearchRequest):
+    engine: str = "google_scholar"
+
+
+@dataclass
+class GoogleFinanceRequest(GoogleSearchRequest):
+    engine: str = "google_finance"
+
+
+@dataclass
+class GooglePatentsRequest(GoogleSearchRequest):
+    engine: str = "google_patents"
+
+
+@dataclass
+class GoogleMapsRequest(GoogleSearchRequest):
+    engine: str = "google_maps"
+    ll: str | None = None  # GPS coordinates string like '@lat,lon,14z'
+
+    def to_serp_request(self) -> SerpRequest:  # type: ignore[override]
+        req = super().to_serp_request()
+        if self.ll:
+            req.extra_params["ll"] = self.ll
+        return req
+
+
+@dataclass
+class GoogleProductRequest(SerpTypedRequest):
+    engine: str = "google_product"
+    product_id: str = ""
+
+    def __post_init__(self) -> None:
+        self._validate_common()
+        if not str(self.product_id).strip():
+            raise ValueError("GoogleProductRequest.product_id is required")
+
+    def to_serp_request(self) -> SerpRequest:  # type: ignore[override]
+        req = super()._build_serp_request(query="")
+        req.extra_params["product_id"] = str(self.product_id).strip()
+        return req
+
+
+@dataclass
+class GoogleFlightsRequest(SerpTypedRequest):
+    engine: str = "google_flights"
+    departure_id: str = ""
+    arrival_id: str = ""
+    outbound_date: str = ""  # YYYY-MM-DD
+    return_date: str | None = None
+
+    def __post_init__(self) -> None:
+        self._validate_common()
+        if not self.departure_id.strip():
+            raise ValueError("GoogleFlightsRequest.departure_id is required")
+        if not self.arrival_id.strip():
+            raise ValueError("GoogleFlightsRequest.arrival_id is required")
+        if not self.outbound_date.strip():
+            raise ValueError("GoogleFlightsRequest.outbound_date is required")
+
+    def to_serp_request(self) -> SerpRequest:  # type: ignore[override]
+        req = super()._build_serp_request(query="")
+        req.extra_params["departure_id"] = self.departure_id
+        req.extra_params["arrival_id"] = self.arrival_id
+        req.extra_params["outbound_date"] = self.outbound_date
+        if self.return_date:
+            req.extra_params["return_date"] = self.return_date
+        return req
+
+
+@dataclass
+class GoogleLensRequest(SerpTypedRequest):
+    engine: str = "google_lens"
+    url: str = ""  # Image URL (required)
+    query: str | None = None  # Optional q for lens
+    type: str | None = None  # Optional lens type
+
+    def __post_init__(self) -> None:
+        self._validate_common()
+        u = self.url.strip()
+        if not u:
+            raise ValueError("GoogleLensRequest.url is required")
+        if not (u.startswith("http://") or u.startswith("https://")):
+            raise ValueError(
+                "GoogleLensRequest.url must start with http:// or https://"
+            )
+
+    def to_serp_request(self) -> SerpRequest:  # type: ignore[override]
+        req = super()._build_serp_request(query="")
+        req.extra_params["url"] = self.url.strip()
+        if self.query:
+            req.extra_params["q"] = self.query
+        if self.type:
+            req.extra_params["type"] = self.type
+        return req
+
+
+# --- Bing ---
+
+
+@dataclass
+class BingSearchRequest(SerpTypedRequest):
+    engine: str = "bing"
+    query: str = ""
+
+    def __post_init__(self) -> None:
+        self._validate_common()
+        if not self.query.strip():
+            raise ValueError("BingSearchRequest.query is required")
+
+    def to_serp_request(self) -> SerpRequest:  # type: ignore[override]
+        return super()._build_serp_request(query=self.query)
+
+
+@dataclass
+class BingNewsRequest(BingSearchRequest):
+    engine: str = "bing_news"
+
+
+@dataclass
+class BingShoppingRequest(BingSearchRequest):
+    engine: str = "bing_shopping"
+
+
+@dataclass
+class BingImagesRequest(BingSearchRequest):
+    engine: str = "bing_images"
+
+
+@dataclass
+class BingVideosRequest(BingSearchRequest):
+    engine: str = "bing_videos"
+
+
+@dataclass
+class BingMapsRequest(BingSearchRequest):
+    engine: str = "bing_maps"
+    cp: str | None = None  # Optional GPS coordinates string like 'lat~lon'
+
+    def to_serp_request(self) -> SerpRequest:  # type: ignore[override]
+        req = super().to_serp_request()
+        if self.cp:
+            req.extra_params["cp"] = self.cp
+        return req
+
+
+# --- Others ---
+
+
+@dataclass
+class DuckDuckGoSearchRequest(SerpTypedRequest):
+    engine: str = "duckduckgo"
+    query: str = ""
+    kl: str | None = None  # region/lang
+
+    def __post_init__(self) -> None:
+        self._validate_common()
+        if not self.query.strip():
+            raise ValueError("DuckDuckGoSearchRequest.query is required")
+
+    def to_serp_request(self) -> SerpRequest:  # type: ignore[override]
+        req = super()._build_serp_request(query=self.query)
+        if self.kl:
+            req.extra_params["kl"] = self.kl
+        return req
+
+
+@dataclass
+class YandexSearchRequest(SerpTypedRequest):
+    engine: str = "yandex"
+    query: str = ""
+
+    def __post_init__(self) -> None:
+        self._validate_common()
+        if not self.query.strip():
+            raise ValueError("YandexSearchRequest.query is required")
+
+    def to_serp_request(self) -> SerpRequest:  # type: ignore[override]
+        return super()._build_serp_request(query=self.query)
