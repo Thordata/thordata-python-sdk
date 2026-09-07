@@ -4,9 +4,9 @@
 
 <img src="https://img.shields.io/badge/Thordata-AI%20Infrastructure-blue?style=for-the-badge" alt="Thordata Logo">
 
-**The Official Python Client for Thordata APIs**
+**The official Python SDK for Thordata's proxy and web data services**
 
-*Proxy Network • SERP API • Web Unlocker • Web Scraper API*
+*Proxy Network • SERP API • Web Unlocker • Web Scraper API • Web Scraper Tools*
 
 [![PyPI version](https://img.shields.io/pypi/v/thordata-sdk.svg?style=flat-square)](https://pypi.org/project/thordata-sdk/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/thordata-sdk.svg?style=flat-square)](https://pypi.org/project/thordata-sdk/)
@@ -19,10 +19,20 @@
 
 ## Overview
 
-The **Thordata Python SDK** is an officially supported client library for Thordata APIs:
-SERP, Universal Scrape (Web Unlocker), Web Scraper Tasks, and Proxy Network.
+The Thordata Python SDK is an officially supported client library for Thordata's proxy and web data services.
+
+It provides a unified Python interface for:
+
+- SERP API
+- Universal Scrape and Web Unlocker
+- Web Scraper Tasks
+- Proxy Network access
+
+Use the SDK to build proxy-enabled web data collection, web intelligence, automation, and AI data workflows.
 
 ## Installation
+
+Python 3.9 or later is required.
 
 ```bash
 pip install thordata-sdk
@@ -96,12 +106,12 @@ See `examples/` for more runnable scripts.
 
 ## Documentation
 
-- `docs/README.md` (index)
-- `docs/SDK_FEATURES_AND_USAGE.md`
-- `docs/serp_reference.md`
-- `docs/universal_reference.md`
-- `docs/browser_reference.md`
-- `docs/web_scraper_tasks_reference.md`
+- [Documentation index](docs/README.md)
+- [SDK features and usage](docs/SDK_FEATURES_AND_USAGE.md)
+- [SERP API reference](docs/serp_reference.md)
+- [Universal Scrape reference](docs/universal_reference.md)
+- [Browser reference](docs/browser_reference.md)
+- [Web Scraper Tasks reference](docs/web_scraper_tasks_reference.md)
 
 ## Development & Testing
 
@@ -128,3 +138,13 @@ For live end-to-end checks (requires real credentials in `.env`), see:
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
+
+## Thordata Resources
+
+- [Thordata homepage](https://www.thordata.com/?ls=github&lk=thordata)
+- [Thordata documentation](https://doc.thordata.com)
+- [Residential Proxies](https://www.thordata.com/products/residential-proxies)
+- [Web Scraper API](https://www.thordata.com/products/web-scraper-api)
+- [Contact the Thordata team](https://www.thordata.com/contact-us)
+
+For data marketplace products, visit [Thordata DataMall](https://datamall.thordata.com/).
