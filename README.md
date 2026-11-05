@@ -143,8 +143,8 @@ MIT License. See [LICENSE](LICENSE) for details.
 
 - [Thordata homepage](https://www.thordata.com/?ls=github&lk=thordata)
 - [Thordata documentation](https://doc.thordata.com)
-- [Residential Proxies](https://www.thordata.com/products/residential-proxies)
-- [Web Scraper API](https://www.thordata.com/products/web-scraper-api)
+- [Residential Proxies](https://www.thordata.com/products/residential-proxies?op=flora&from=github)
+- [Web Scraper API](https://www.thordata.com/products/web-scraper?op=flora&from=github)
 - [Contact the Thordata team](https://www.thordata.com/contact-us)
 
 For data marketplace products, visit [Thordata DataMall](https://datamall.thordata.com/).
