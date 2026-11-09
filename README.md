@@ -30,6 +30,15 @@ It provides a unified Python interface for:
 
 Use the SDK to build proxy-enabled web data collection, web intelligence, automation, and AI data workflows.
 
+## Get API Access
+
+Create a Thordata account and get the credentials required by the SDK:
+
+- [Create a Thordata account](https://www.thordata.com/?ls=github&lk=thordata)
+- [Read the official documentation](https://doc.thordata.com)
+
+The SDK supports SERP API, proxy, Web Unlocker, and Web Scraper services.
+
 ## Installation
 
 Python 3.9 or later is required.
