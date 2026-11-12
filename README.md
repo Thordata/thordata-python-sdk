@@ -15,6 +15,10 @@
 
 </div>
 
+> **Maintenance notice:** This repository contains the established `thordata-sdk` package for existing users.
+> For new Python projects, use the [next-generation Thordata Python SDK](https://github.com/Thordata/thordata-python).
+> Existing installations can continue using this package.
+
 ---
 
 ## Overview
