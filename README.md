@@ -15,10 +15,9 @@
 
 </div>
 
-> **Maintenance notice:** This repository contains the established `thordata-sdk` package for existing users.
-> For new Python projects, use the [next-generation Thordata Python SDK](https://github.com/Thordata/thordata-python).
-> Existing installations can continue using this package.
-
+> **Deprecated:** This repository is no longer the primary Thordata Python SDK and will not receive new feature development.
+> For all new and future Python projects, use the [next-generation Thordata Python SDK](https://github.com/Thordata/thordata-python).
+> This repository is retained for historical reference only. Do not start new integrations with this SDK.
 ---
 
 ## Overview
